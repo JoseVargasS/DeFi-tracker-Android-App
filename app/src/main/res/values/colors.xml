@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="binance_green">#0ECB81</color>
+    <color name="binance_red">#F6465D</color>
+    <color name="dark_gray">#16171A</color>
+</resources>
