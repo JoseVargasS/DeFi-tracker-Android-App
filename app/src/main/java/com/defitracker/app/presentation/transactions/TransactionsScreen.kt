@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.defitracker.app.data.remote.dto.EtherscanTransactionDto
+import java.math.BigDecimal
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -102,10 +103,19 @@ fun TransactionItem(tx: EtherscanTransactionDto, userAddress: String) {
         sdf.format(Date(tx.timeStamp.toLong() * 1000))
     }
 
+    // BigDecimal para wei; si viene en notación científica (ej. 5.0E18) usar Double como respaldo
     val amount = remember(tx.value, tx.tokenDecimal) {
         val dec = tx.tokenDecimal?.toIntOrNull() ?: 18
-        val value = tx.value.toDoubleOrNull() ?: 0.0
-        value / Math.pow(10.0, dec.toDouble())
+        try {
+            val valueWei = try {
+                BigDecimal(tx.value)
+            } catch (_: Exception) {
+                BigDecimal.valueOf(tx.value.toDoubleOrNull() ?: 0.0)
+            }
+            valueWei.divide(BigDecimal.TEN.pow(dec), 18, java.math.RoundingMode.DOWN).toDouble()
+        } catch (_: Exception) {
+            0.0
+        }
     }
 
     Row(

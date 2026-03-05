@@ -10,9 +10,14 @@ import com.defitracker.app.data.local.WalletEntity
 import com.defitracker.app.data.remote.BinanceApi
 import com.defitracker.app.data.remote.CoinStatsApi
 import com.defitracker.app.data.remote.EtherscanApi
+import com.defitracker.app.data.remote.ExplorerApi
 import com.defitracker.app.data.remote.HTXApi
+import com.defitracker.app.data.remote.MoralisApi
+import com.defitracker.app.data.remote.dto.EtherscanResponse
+import com.defitracker.app.data.remote.dto.EtherscanResponseDeserializer
 import com.defitracker.app.data.repository.CryptoRepositoryImpl
 import com.defitracker.app.domain.repository.CryptoRepository
+import com.google.gson.GsonBuilder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -56,71 +61,55 @@ object AppModule {
             .create(CoinStatsApi::class.java)
     }
 
+    private fun explorerGson() = GsonBuilder()
+        .registerTypeAdapter(EtherscanResponse::class.java, EtherscanResponseDeserializer())
+        .create()
+
     @Provides
     @Singleton
-    @Named("ethereum")
     fun provideEtherscanApi(): EtherscanApi {
         return Retrofit.Builder()
-            .baseUrl(Constants.ETHEREUM_ETHERSCAN_URL)
-            .addConverterFactory(GsonConverterFactory.create())
+            .baseUrl(Constants.ETHERSCAN_V2_BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create(explorerGson()))
             .build()
             .create(EtherscanApi::class.java)
     }
 
-    @Provides
-    @Singleton
-    @Named("bsc")
-    fun provideBSCEtherscanApi(): EtherscanApi {
-        return Retrofit.Builder()
-            .baseUrl(Constants.BSC_ETHERSCAN_URL)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(EtherscanApi::class.java)
-    }
+    @Provides @Singleton @Named("bsc")
+    fun provideBscScanApi(): ExplorerApi = Retrofit.Builder()
+        .baseUrl(Constants.BSC_SCAN_BASE_URL)
+        .addConverterFactory(GsonConverterFactory.create(explorerGson()))
+        .build().create(ExplorerApi::class.java)
 
-    @Provides
-    @Singleton
-    @Named("base")
-    fun provideBaseEtherscanApi(): EtherscanApi {
-        return Retrofit.Builder()
-            .baseUrl(Constants.BASE_ETHERSCAN_URL)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(EtherscanApi::class.java)
-    }
+    @Provides @Singleton @Named("polygon")
+    fun providePolygonScanApi(): ExplorerApi = Retrofit.Builder()
+        .baseUrl(Constants.POLYGON_SCAN_BASE_URL)
+        .addConverterFactory(GsonConverterFactory.create(explorerGson()))
+        .build().create(ExplorerApi::class.java)
 
-    @Provides
-    @Singleton
-    @Named("optimism")
-    fun provideOptimismEtherscanApi(): EtherscanApi {
-        return Retrofit.Builder()
-            .baseUrl(Constants.OPTIMISM_ETHERSCAN_URL)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(EtherscanApi::class.java)
-    }
+    @Provides @Singleton @Named("base")
+    fun provideBaseScanApi(): ExplorerApi = Retrofit.Builder()
+        .baseUrl(Constants.BASE_SCAN_BASE_URL)
+        .addConverterFactory(GsonConverterFactory.create(explorerGson()))
+        .build().create(ExplorerApi::class.java)
 
-    @Provides
-    @Singleton
-    @Named("polygon")
-    fun providePolygonEtherscanApi(): EtherscanApi {
-        return Retrofit.Builder()
-            .baseUrl(Constants.POLYGON_ETHERSCAN_URL)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(EtherscanApi::class.java)
-    }
+    @Provides @Singleton @Named("optimism")
+    fun provideOptimismScanApi(): ExplorerApi = Retrofit.Builder()
+        .baseUrl(Constants.OPTIMISM_SCAN_BASE_URL)
+        .addConverterFactory(GsonConverterFactory.create(explorerGson()))
+        .build().create(ExplorerApi::class.java)
 
-    @Provides
-    @Singleton
-    @Named("arbitrum")
-    fun provideArbitrumEtherscanApi(): EtherscanApi {
-        return Retrofit.Builder()
-            .baseUrl(Constants.ARBITRUM_ETHERSCAN_URL)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(EtherscanApi::class.java)
-    }
+    @Provides @Singleton @Named("arbitrum")
+    fun provideArbiscanApi(): ExplorerApi = Retrofit.Builder()
+        .baseUrl(Constants.ARBISCAN_BASE_URL)
+        .addConverterFactory(GsonConverterFactory.create(explorerGson()))
+        .build().create(ExplorerApi::class.java)
+
+    @Provides @Singleton
+    fun provideMoralisApi(): MoralisApi = Retrofit.Builder()
+        .baseUrl(Constants.MORALIS_BASE_URL)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build().create(MoralisApi::class.java)
 
     @Provides
     @Singleton
@@ -147,18 +136,20 @@ object AppModule {
         binanceApi: BinanceApi,
         htxApi: HTXApi,
         coinStatsApi: CoinStatsApi,
-        @Named("ethereum") ethereumApi: EtherscanApi,
-        @Named("bsc") bscApi: EtherscanApi,
-        @Named("base") baseApi: EtherscanApi,
-        @Named("optimism") optimismApi: EtherscanApi,
-        @Named("polygon") polygonApi: EtherscanApi,
-        @Named("arbitrum") arbitrumApi: EtherscanApi,
+        etherscanApi: EtherscanApi,
+        @Named("bsc") bscScanApi: ExplorerApi,
+        @Named("polygon") polygonScanApi: ExplorerApi,
+        @Named("base") baseScanApi: ExplorerApi,
+        @Named("optimism") optimismScanApi: ExplorerApi,
+        @Named("arbitrum") arbiscanApi: ExplorerApi,
+        moralisApi: MoralisApi,
         trackedPairDao: TrackedPairDao,
         walletDao: WalletDao
     ): CryptoRepository {
         return CryptoRepositoryImpl(
             binanceApi, htxApi, coinStatsApi,
-            ethereumApi, bscApi, baseApi, optimismApi, polygonApi, arbitrumApi,
+            etherscanApi, bscScanApi, polygonScanApi, baseScanApi, optimismScanApi, arbiscanApi,
+            moralisApi,
             trackedPairDao, walletDao
         )
     }

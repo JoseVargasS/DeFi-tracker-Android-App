@@ -7,9 +7,12 @@ import com.defitracker.app.data.local.WalletEntity
 import com.defitracker.app.data.remote.BinanceApi
 import com.defitracker.app.data.remote.CoinStatsApi
 import com.defitracker.app.data.remote.EtherscanApi
+import com.defitracker.app.data.remote.ExplorerApi
 import com.defitracker.app.data.remote.HTXApi
+import com.defitracker.app.data.remote.MoralisApi
 import com.defitracker.app.data.remote.dto.CoinStatsBalanceDto
 import com.defitracker.app.data.remote.dto.EtherscanTransactionDto
+import com.defitracker.app.data.remote.dto.MoralisTxDto
 import com.defitracker.app.domain.model.CryptoPair
 import com.defitracker.app.domain.model.PairDetail
 import com.defitracker.app.domain.repository.CryptoRepository
@@ -19,7 +22,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
-import javax.inject.Named
 import javax.inject.Singleton
 
 @Singleton
@@ -27,26 +29,18 @@ class CryptoRepositoryImpl @Inject constructor(
     private val binanceApi: BinanceApi,
     private val htxApi: HTXApi,
     private val coinStatsApi: CoinStatsApi,
-    @Named("ethereum") private val ethereumApi: EtherscanApi,
-    @Named("bsc") private val bscApi: EtherscanApi,
-    @Named("base") private val baseApi: EtherscanApi,
-    @Named("optimism") private val optimismApi: EtherscanApi,
-    @Named("polygon") private val polygonApi: EtherscanApi,
-    @Named("arbitrum") private val arbitrumApi: EtherscanApi,
+    private val etherscanApi: EtherscanApi,
+    private val bscScanApi: ExplorerApi,
+    private val polygonScanApi: ExplorerApi,
+    private val baseScanApi: ExplorerApi,
+    private val optimismScanApi: ExplorerApi,
+    private val arbiscanApi: ExplorerApi,
+    private val moralisApi: MoralisApi,
     private val trackedPairDao: TrackedPairDao,
     private val walletDao: WalletDao
 ) : CryptoRepository {
 
     private var cachedSymbols: List<Pair<String, String>> = emptyList()
-
-    private val chainIdToApi = mapOf(
-        "1" to ethereumApi,
-        "56" to bscApi,
-        "8453" to baseApi,
-        "10" to optimismApi,
-        "137" to polygonApi,
-        "42161" to arbitrumApi
-    )
 
     override fun getTrackedPairs(): Flow<List<CryptoPair>> {
         return trackedPairDao.getAllTrackedPairs().map { entities ->
@@ -55,7 +49,7 @@ class CryptoRepositoryImpl @Inject constructor(
                     symbol = it.symbol,
                     baseAsset = it.baseAsset,
                     quoteAsset = it.quoteAsset,
-                    price = "...",
+                    price = "0.00",
                     priceChangePercent = "0.00",
                     isPositive = true,
                     source = it.source
@@ -196,60 +190,87 @@ class CryptoRepositoryImpl @Inject constructor(
         results
     }
 
-    override suspend fun getWalletTransactions(address: String): List<EtherscanTransactionDto> = coroutineScope {
-        val chains = listOf(
-            "1" to "Ethereum",
-            "56" to "BSC",
-            "8453" to "Base",
-            "10" to "Optimism",
-            "137" to "Polygon",
-            "42161" to "Arbitrum"
+    override suspend fun getWalletTransactions(address: String): List<EtherscanTransactionDto> = coroutineScope scope@{
+        val apiKey = com.defitracker.app.core.Constants.ETHERSCAN_API_KEY
+        val nativeSymbols = mapOf(
+            "Ethereum" to "ETH",
+            "BSC" to "BNB",
+            "Base" to "ETH",
+            "Optimism" to "ETH",
+            "Polygon" to "MATIC",
+            "Arbitrum" to "ETH"
         )
-        
-        val allTransactions = mutableListOf<EtherscanTransactionDto>()
-        
-        chains.forEach { (chainId, networkName) ->
+
+        // Ethereum: Etherscan API V2 (chainid=1)
+        val ethDeferred = this@scope.async {
             try {
-                val api = chainIdToApi[chainId] ?: return@forEach
-                
-                // Fetch ERC20 transactions
-                val tokentx = api.getTransactions(
-                    action = "tokentx", 
-                    address = address, 
-                    apiKey = com.defitracker.app.core.Constants.ETHERSCAN_API_KEY
-                )
-                if (tokentx.status == "1") {
-                    allTransactions.addAll(tokentx.result.map { it.copy(network = networkName) })
-                }
-                
-                // Fetch Native ETH/BNB/etc transactions
-                val txlist = api.getTransactions(
-                    action = "txlist", 
-                    address = address, 
-                    apiKey = com.defitracker.app.core.Constants.ETHERSCAN_API_KEY
-                )
-                if (txlist.status == "1") {
-                    allTransactions.addAll(txlist.result.map { 
-                        it.copy(
-                            tokenSymbol = when(networkName) {
-                                "BSC" -> "BNB"
-                                "Polygon" -> "MATIC"
-                                else -> "ETH"
-                            }, 
-                            tokenDecimal = "18",
-                            network = networkName
-                        )
-                    })
-                }
-                
-                // Small delay to prevent hitting rate limits
-                kotlinx.coroutines.delay(200)
+                val list = mutableListOf<EtherscanTransactionDto>()
+                val tokentx = etherscanApi.getTransactions(chainid = "1", action = "tokentx", address = address, apiKey = apiKey)
+                if (tokentx.status == "1") list.addAll(tokentx.result.map { it.copy(network = "Ethereum") })
+                val txlist = etherscanApi.getTransactions(chainid = "1", action = "txlist", address = address, apiKey = apiKey)
+                if (txlist.status == "1") list.addAll(txlist.result.map { it.copy(tokenSymbol = "ETH", tokenDecimal = "18", network = "Ethereum") })
+                list
             } catch (e: Exception) {
                 e.printStackTrace()
+                emptyList()
             }
         }
-        
-        allTransactions.sortedByDescending { it.timeStamp.toLongOrNull() ?: 0L }
+
+        // Otras redes: Moralis (tier gratuito con BSC, Polygon, Base, etc.) si hay API key
+        val moralisKey = com.defitracker.app.core.Constants.MORALIS_API_KEY
+        val moralisChains = listOf(
+            Triple("bsc", "BSC", "BNB"),
+            Triple("polygon", "Polygon", "MATIC"),
+            Triple("base", "Base", "ETH"),
+            Triple("optimism", "Optimism", "ETH"),
+            Triple("arbitrum", "Arbitrum", "ETH")
+        )
+        val otherDeferred = if (moralisKey.isNotBlank()) {
+            moralisChains.map { (moralisChain, networkName, nativeSymbol) ->
+                this@scope.async {
+                    try {
+                        val resp = moralisApi.getNativeTransactions(address, moralisChain, apiKey = moralisKey)
+                        (resp.result ?: emptyList()).map { moralisTxToDto(it, networkName, nativeSymbol) }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        emptyList()
+                    }
+                }
+            }
+        } else {
+            emptyList()
+        }
+
+        val allResults = listOf(ethDeferred) + otherDeferred
+        awaitAll(*allResults.toTypedArray()).flatten().sortedByDescending { it.timeStamp.toLongOrNull() ?: 0L }
+    }
+
+    private fun moralisTxToDto(t: MoralisTxDto, networkName: String, nativeSymbol: String): EtherscanTransactionDto {
+        // Gson deserializa value como Double; usar toString() (ej. "5.0E18") y la UI lo parsea
+        val valueStr = when (t.value) {
+            is Number -> (t.value as Number).toString()
+            is String -> t.value.takeIf { it.isNotBlank() } ?: "0"
+            else -> "0"
+        }
+        val timeStamp = try {
+            if (!t.blockTimestamp.isNullOrBlank()) {
+                java.time.Instant.parse(t.blockTimestamp).epochSecond.toString()
+            } else "0"
+        } catch (_: Exception) { "0" }
+        return EtherscanTransactionDto(
+            hash = t.hash,
+            from = t.fromAddress,
+            to = t.toAddress,
+            value = valueStr,
+            timeStamp = timeStamp,
+            tokenSymbol = nativeSymbol,
+            tokenDecimal = "18",
+            tokenName = null,
+            input = null,
+            symbol = null,
+            decimals = null,
+            network = networkName
+        )
     }
 
     private fun formatPrice(price: Double): String {

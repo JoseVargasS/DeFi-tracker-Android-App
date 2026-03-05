@@ -7,12 +7,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -135,37 +137,37 @@ fun CryptoListScreen(
                 }
             }
 
-            // Search Results Overlay
-            if (isSearchMode && searchQuery.isNotEmpty()) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.95f)),
-                    color = Color.Transparent
-                ) {
-                    LazyColumn(
+                // --- MODIFIED: Search Results Dropdown ---
+                if (isSearchMode && searchQuery.isNotEmpty()) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(top = 135.dp) // Positioned below the search field
+                            .heightIn(max = 280.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF1A1D23))
+                            .zIndex(10f)
                     ) {
-                        items(filteredSymbols) { (symbol, base) ->
-                            ListItem(
-                                headlineContent = { Text(symbol, color = Color.White) },
-                                supportingContent = { Text(base, color = Color.Gray) },
-                                modifier = Modifier
-                                    .clickable {
-                                        viewModel.onAddPair(symbol, base, "Binance")
-                                        isSearchMode = false
-                                        searchQuery = ""
-                                    }
-                                    .background(Color.Transparent),
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                            )
-                            Divider(color = Color.Gray.copy(alpha = 0.2f))
+                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                            items(filteredSymbols) { (symbol, base) ->
+                                ListItem(
+                                    headlineContent = { Text(symbol, color = Color.White, fontSize = 14.sp) },
+                                    supportingContent = { Text(base, color = Color.Gray, fontSize = 11.sp) },
+                                    modifier = Modifier
+                                        .clickable {
+                                            viewModel.onAddPair(symbol, base, "Binance")
+                                            isSearchMode = false
+                                            searchQuery = ""
+                                        }
+                                        .background(Color.Transparent),
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                                )
+                                Divider(color = Color.Gray.copy(alpha = 0.1f))
+                            }
                         }
                     }
                 }
-            }
         }
     }
 }

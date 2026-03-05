@@ -5,13 +5,13 @@ import retrofit2.http.GET
 import retrofit2.http.Query
 
 /**
- * Etherscan API V2: single base URL https://api.etherscan.io/v2/api with chainid for each network.
- * V1 endpoints are deprecated (since Aug 2025).
+ * Explorer API V1-style: used by BscScan, Polygonscan, Basescan, etc.
+ * Same request/response as Etherscan; each chain has its own base URL.
+ * No chainid parameter.
  */
-interface EtherscanApi {
-    @GET("v2/api")
+interface ExplorerApi {
+    @GET("api")
     suspend fun getTransactions(
-        @Query("chainid") chainid: String,
         @Query("module") module: String = "account",
         @Query("action") action: String,
         @Query("address") address: String,
