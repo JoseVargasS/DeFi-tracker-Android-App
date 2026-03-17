@@ -53,7 +53,23 @@ class CryptoDetailViewModel @Inject constructor(
                 delay(2000)
                 try {
                     val detail = repository.getPairDetail(symbol, source)
-                    _state.value = state.value.copy(detail = detail)
+                    val currentPrice = detail.price.toDoubleOrNull() ?: 0.0
+                    
+                    val updatedCandles = _state.value.candles.toMutableList()
+                    if (updatedCandles.isNotEmpty()) {
+                        val lastCandle = updatedCandles.last()
+                        val newLastCandle = lastCandle.copy(
+                            close = currentPrice,
+                            high = Math.max(lastCandle.high, currentPrice),
+                            low = Math.min(lastCandle.low, currentPrice)
+                        )
+                        updatedCandles[updatedCandles.size - 1] = newLastCandle
+                    }
+                    
+                    _state.value = _state.value.copy(
+                        detail = detail,
+                        candles = updatedCandles
+                    )
                 } catch (e: Exception) {}
             }
         }
