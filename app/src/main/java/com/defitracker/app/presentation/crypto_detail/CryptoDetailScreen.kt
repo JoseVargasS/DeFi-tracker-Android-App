@@ -232,8 +232,8 @@ fun PriceChart(
                     textAlign = Paint.Align.LEFT
                 }
                 private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = GraphicsColor.argb(160, 255, 255, 255)
-                    strokeWidth = 1f
+                    color = GraphicsColor.argb(220, 255, 255, 255)
+                    strokeWidth = 1.5f
                     pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
                 }
 
@@ -397,15 +397,16 @@ fun PriceChart(
                     val chartWidth = width.toFloat()
                     val offsetRight = if (tagRight > chartWidth) tagRight - chartWidth + 4f else 0f
                     
+                    val tagGap = 6f
                     val rectY = android.graphics.RectF(
                         contentRight - offsetRight, 
-                        py - lineHeight - 2f, 
+                        py + tagGap, 
                         contentRight + maxWidth + 20f - offsetRight, 
-                        py + lineHeight + 2f
+                        py + tagGap + (lineHeight * 2) + 4f
                     )
                     canvas.drawRoundRect(rectY, 4f, 4f, tagBackgroundPaint)
-                    canvas.drawText(priceText, rectY.centerX(), py - 2f, tagTextPaint)
-                    canvas.drawText(pctText, rectY.centerX(), py + thY + 2f, tagTextPaint)
+                    canvas.drawText(priceText, rectY.centerX(), py + tagGap + thY + 2f, tagTextPaint)
+                    canvas.drawText(pctText, rectY.centerX(), py + tagGap + (thY * 2) + 10f, tagTextPaint)
 
                     // X-Axis Tag (Date)
                     val dateText = (xAxis.valueFormatter as? ValueFormatter)?.getFormattedValue(h.x) ?: ""
