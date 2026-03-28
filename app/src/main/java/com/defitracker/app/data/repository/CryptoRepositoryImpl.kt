@@ -275,12 +275,12 @@ class CryptoRepositoryImpl @Inject constructor(
 
     private fun formatPrice(price: Double): String {
         return if (price < 1.0) {
-            "%.6f".format(price)
+            String.format(java.util.Locale.US, "%.6f", price)
         } else {
-            "%.2f".format(price)
+            String.format(java.util.Locale.US, "%.2f", price)
         }
     }
 
-    private fun Double.format(digits: Int) = "%.${digits}f".format(this)
+    private fun Double.format(digits: Int) = String.format(java.util.Locale.US, "%.${digits}f", this)
 }
 
