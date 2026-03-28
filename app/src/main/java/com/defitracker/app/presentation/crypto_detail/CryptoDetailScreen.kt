@@ -299,6 +299,7 @@ fun PriceChart(
                                     // Toggle OFF
                                     highlightValue(null)
                                     lastTouchYPx = -1f
+                                    syncHighlights(this, volumeChartRef.value, stochChartRef.value)
                                 } else {
                                     // Toggle ON
                                     lastTouchYPx = event.y
@@ -540,10 +541,58 @@ fun PriceChart(
 // ─── VOLUME CHART ────────────────────────────────────────────────────────────
 @Composable
 fun VolumeChart(state: CryptoDetailState, chartRef: MutableState<BarChart?>) {
+    val stateRef = remember { mutableStateOf(state) }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
-            BarChart(context).apply {
+            object : BarChart(context) {
+                private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(220, 255, 255, 255)
+                    strokeWidth = 1.5f
+                    pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                }
+                private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.WHITE
+                    textSize = context.resources.displayMetrics.density * 10f
+                    textAlign = Paint.Align.LEFT
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                }
+                
+                private fun formatVolDouble(v: Double): String = when {
+                    v >= 1_000_000 -> String.format(Locale.US, "%.2fM", v / 1_000_000)
+                    v >= 1_000 -> String.format(Locale.US, "%.2fK", v / 1_000)
+                    else -> String.format(Locale.US, "%.2f", v)
+                }
+
+                override fun onDraw(canvas: Canvas) {
+                    super.onDraw(canvas)
+                    val h = highlighted?.getOrNull(0)
+                    val currentState = stateRef.value
+                    if (currentState.candles.isEmpty()) return
+                    
+                    val density = context.resources.displayMetrics.density
+                    val textX = viewPortHandler.contentLeft() + (density * 5f)
+                    val textY = viewPortHandler.contentTop() + (density * 14f)
+                    
+                    if (h != null) {
+                        val xPts = floatArrayOf(h.x, 0f)
+                        getTransformer(YAxis.AxisDependency.LEFT).pointValuesToPixel(xPts)
+                        val px = xPts[0]
+                        canvas.drawLine(px, viewPortHandler.contentTop(), px, viewPortHandler.contentBottom(), linePaint)
+                        
+                        val idx = h.x.toInt()
+                        if (idx in currentState.candles.indices) {
+                            val vol = currentState.candles[idx].volume
+                            canvas.drawText("Vol: ${formatVolDouble(vol)}", textX, textY, textPaint)
+                        }
+                    } else {
+                        val last = currentState.candles.lastOrNull()
+                        if (last != null) {
+                            canvas.drawText("Vol: ${formatVolDouble(last.volume)}", textX, textY, textPaint)
+                        }
+                    }
+                }
+            }.apply {
                 setupCommonChartParams()
                 isDragEnabled = false
                 setScaleEnabled(false)
@@ -551,16 +600,19 @@ fun VolumeChart(state: CryptoDetailState, chartRef: MutableState<BarChart?>) {
                 axisLeft.apply {
                     setLabelCount(2, false)
                     setPosition(YAxis.YAxisLabelPosition.INSIDE_CHART)
+                    spaceTop = 35f
                 }
                 chartRef.value = this
             }
         },
         update = { chart ->
+            stateRef.value = state
             val entries = state.candles.mapIndexed { index, it ->
                 BarEntry(index.toFloat(), it.volume.toFloat())
             }
             val dataset = BarDataSet(entries, "Vol").apply {
                 setDrawValues(false)
+                highLightAlpha = 0 // Remove default block highlight
                 val colors = state.candles.map {
                     if (it.close >= it.open) GraphicsColor.parseColor("#1ECB81") else GraphicsColor.parseColor("#F6465D")
                 }
@@ -575,29 +627,96 @@ fun VolumeChart(state: CryptoDetailState, chartRef: MutableState<BarChart?>) {
 // ─── STOCHRSI CHART ──────────────────────────────────────────────────────────
 @Composable
 fun StochRSIChart(state: CryptoDetailState, chartRef: MutableState<LineChart?>) {
+    val stateRef = remember { mutableStateOf(state) }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
-            LineChart(context).apply {
+            object : LineChart(context) {
+                private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(220, 255, 255, 255)
+                    strokeWidth = 1.5f
+                    pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                }
+                private val kPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.parseColor("#FF9800")
+                    textSize = context.resources.displayMetrics.density * 10f
+                    textAlign = Paint.Align.LEFT
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                }
+                private val dPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.parseColor("#E91E63")
+                    textSize = context.resources.displayMetrics.density * 10f
+                    textAlign = Paint.Align.LEFT
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                }
+
+                override fun onDraw(canvas: Canvas) {
+                    super.onDraw(canvas)
+                    val h = highlighted?.getOrNull(0)
+                    val currentState = stateRef.value
+                    
+                    val density = context.resources.displayMetrics.density
+                    val textX = viewPortHandler.contentLeft() + (density * 5f)
+                    val textY = viewPortHandler.contentTop() + (density * 14f)
+                    
+                    var kVal = 0.0
+                    var dVal = 0.0
+                    var hasVal = false
+                    
+                    if (h != null) {
+                        val xPts = floatArrayOf(h.x, 0f)
+                        getTransformer(YAxis.AxisDependency.LEFT).pointValuesToPixel(xPts)
+                        val px = xPts[0]
+                        canvas.drawLine(px, viewPortHandler.contentTop(), px, viewPortHandler.contentBottom(), linePaint)
+                        
+                        val idx = h.x.toInt()
+                        val k = currentState.stochK.find { it.first.toInt() == idx }?.second
+                        val d = currentState.stochD.find { it.first.toInt() == idx }?.second
+                        if (k != null && d != null) {
+                            kVal = k
+                            dVal = d
+                            hasVal = true
+                        }
+                    } else {
+                        val lastK = currentState.stochK.lastOrNull()
+                        val lastD = currentState.stochD.lastOrNull()
+                        if (lastK != null && lastD != null) {
+                            kVal = lastK.second
+                            dVal = lastD.second
+                            hasVal = true
+                        }
+                    }
+                    
+                    if (hasVal) {
+                        val kText = "K: ${String.format(java.util.Locale.US, "%.2f", kVal)}  "
+                        canvas.drawText(kText, textX, textY, kPaint)
+                        val kWidth = kPaint.measureText(kText)
+                        val dText = "D: ${String.format(java.util.Locale.US, "%.2f", dVal)}"
+                        canvas.drawText(dText, textX + kWidth, textY, dPaint)
+                    }
+                }
+            }.apply {
                 setupCommonChartParams()
                 isDragEnabled = false
                 setScaleEnabled(false)
                 setPinchZoom(false)
                 axisLeft.apply {
                     axisMinimum = 0f
-                    axisMaximum = 100f
+                    axisMaximum = 135f
                     setLabelCount(3, true)
+                    setPosition(YAxis.YAxisLabelPosition.INSIDE_CHART)
                 }
                 chartRef.value = this
             }
         },
         update = { chart ->
+            stateRef.value = state
             val lineData = LineData()
             if (state.stochK.isNotEmpty()) {
                 val kEntries = state.stochK.map { Entry(it.first.toFloat(), it.second.toFloat()) }
                 val dEntries = state.stochD.map { Entry(it.first.toFloat(), it.second.toFloat()) }
-                lineData.addDataSet(createBBLineDataSet(kEntries, "K", GraphicsColor.parseColor("#FF9800")))
-                lineData.addDataSet(createBBLineDataSet(dEntries, "D", GraphicsColor.parseColor("#E91E63")))
+                lineData.addDataSet(createBBLineDataSet(kEntries, "K", GraphicsColor.parseColor("#FF9800"), 1f, highlight = true))
+                lineData.addDataSet(createBBLineDataSet(dEntries, "D", GraphicsColor.parseColor("#E91E63"), 1f, highlight = true))
             }
             chart.data = lineData
             chart.applySyncAndInitialZoom(state.candles)
@@ -679,16 +798,20 @@ private fun createCandleDataSet(entries: List<CandleEntry>) = CandleDataSet(entr
     enableDashedHighlightLine(10f, 5f, 0f)
 }
 
-private fun createBBLineDataSet(entries: List<Entry>, label: String, color: Int, width: Float = 1f) = LineDataSet(entries, label).apply {
+private fun createBBLineDataSet(entries: List<Entry>, label: String, color: Int, width: Float = 1f, highlight: Boolean = false) = LineDataSet(entries, label).apply {
     this.color = color
     setDrawCircles(false)
     lineWidth = width
     setDrawValues(false)
-    isHighlightEnabled = false // Fix: Disable highlight for BB lines
+    isHighlightEnabled = highlight // Fix: Disable highlight for BB lines, but allow for indicators
     mode = LineDataSet.Mode.CUBIC_BEZIER
     highLightColor = "#ADB1B8".toColorInt()
     highlightLineWidth = 1f
     enableDashedHighlightLine(10f, 5f, 0f)
+    if (highlight) {
+        setDrawHorizontalHighlightIndicator(false)
+        setDrawVerticalHighlightIndicator(false)
+    }
 }
 
 // ─── INITIAL ZOOM / SCROLL ───────────────────────────────────────────────────
