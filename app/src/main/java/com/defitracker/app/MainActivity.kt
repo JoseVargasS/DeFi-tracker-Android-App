@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "DeFi Tracker",
+                                        text = "Octopus",
                                         style = MaterialTheme.typography.titleMedium,
                                         color = Color.White
                                     )
