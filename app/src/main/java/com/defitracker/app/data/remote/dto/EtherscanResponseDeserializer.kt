@@ -22,6 +22,7 @@ class EtherscanResponseDeserializer : JsonDeserializer<EtherscanResponse> {
         val message = obj.get("message")?.asString ?: ""
         val resultElement = obj.get("result")
 
+        var resultMessage: String? = null
         val result: List<EtherscanTransactionDto> = when {
             resultElement == null -> emptyList()
             resultElement.isJsonArray -> {
@@ -33,9 +34,12 @@ class EtherscanResponseDeserializer : JsonDeserializer<EtherscanResponse> {
                     }
                 }
             }
-            else -> emptyList() // result is string (error or "No transactions found")
+            else -> {
+                resultMessage = resultElement.asString
+                emptyList()
+            }
         }
 
-        return EtherscanResponse(status = status, message = message, result = result)
+        return EtherscanResponse(status = status, message = message, result = result, resultMessage = resultMessage)
     }
 }

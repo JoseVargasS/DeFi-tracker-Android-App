@@ -1,0 +1,51 @@
+package com.defitracker.app.data.remote.dto
+
+data class CoinStatsTransactionsResponse(
+    val result: List<CoinStatsTransactionDto> = emptyList(),
+    val meta: CoinStatsTransactionMetaDto? = null
+)
+
+data class CoinStatsTransactionMetaDto(
+    val page: Int? = null,
+    val limit: Int? = null
+)
+
+data class CoinStatsTransactionDto(
+    val type: String? = null,
+    val date: String? = null,
+    val coinData: CoinStatsTransactionCoinDataDto? = null,
+    val transactions: List<CoinStatsTransactionGroupDto> = emptyList(),
+    val hash: CoinStatsTransactionHashDto? = null
+)
+
+data class CoinStatsTransactionCoinDataDto(
+    val count: Double? = null,
+    val symbol: String? = null,
+    val currentValue: Double? = null
+)
+
+data class CoinStatsTransactionGroupDto(
+    val action: String? = null,
+    val items: List<CoinStatsTransactionItemDto> = emptyList()
+)
+
+data class CoinStatsTransactionItemDto(
+    val id: String? = null,
+    val count: Double? = null,
+    val totalWorth: Double? = null,
+    val toAddress: String? = null,
+    val fromAddress: String? = null,
+    val coin: CoinStatsTransactionCoinDto? = null
+)
+
+data class CoinStatsTransactionCoinDto(
+    val id: String? = null,
+    val name: String? = null,
+    val symbol: String? = null,
+    val icon: String? = null
+)
+
+data class CoinStatsTransactionHashDto(
+    val id: String? = null,
+    val explorerUrl: String? = null
+)

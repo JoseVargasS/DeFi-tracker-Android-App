@@ -8,6 +8,8 @@ import com.defitracker.app.data.local.WalletEntity
 import com.defitracker.app.data.remote.dto.EtherscanTransactionDto
 import com.defitracker.app.domain.repository.CryptoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -28,6 +30,7 @@ class TransactionsViewModel @Inject constructor(
 
     private val _state = mutableStateOf(TransactionsState())
     val state: State<TransactionsState> = _state
+    private var fetchJob: Job? = null
 
     init {
         getSavedWallets()
@@ -52,11 +55,14 @@ class TransactionsViewModel @Inject constructor(
     fun fetchTransactions(address: String) {
         if (address.isEmpty()) return
         
-        viewModelScope.launch {
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null, transactions = emptyList())
             try {
                 val txs = repository.getWalletTransactions(address)
                 _state.value = _state.value.copy(transactions = txs, isLoading = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }

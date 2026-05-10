@@ -1,5 +1,7 @@
 package com.defitracker.app.presentation.wallet
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +15,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +41,12 @@ fun WalletScreen(
 
     val allAssets = state.balances.values.flatten()
     val totalWorth = allAssets.sumOf { (it.amount ?: 0.0) * (it.price ?: 0.0) }
+    val selectedWallet = state.wallets.find { it.address == state.selectedAddress }
+    val selectedLabel = selectedWallet?.name?.takeIf { it.isNotBlank() } ?: "Selected wallet"
+    val shortAddress = state.selectedAddress
+        .takeIf { it.isNotBlank() }
+        ?.let { "${it.take(6)}...${it.takeLast(4)}" }
+        ?: "No wallet selected"
 
     LazyColumn(
         modifier = Modifier
@@ -48,12 +57,36 @@ fun WalletScreen(
     ) {
         item {
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Wallet Explorer",
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.White,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Wallet Explorer",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = shortAddress,
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                }
+                IconButton(
+                    onClick = { viewModel.fetchBalances(state.selectedAddress) },
+                    enabled = state.selectedAddress.isNotBlank() && !state.isLoading,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = Color.White,
+                        disabledContentColor = Color.Gray
+                    )
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                }
+            }
         }
 
         // Wallet Selection / Input
@@ -63,9 +96,15 @@ fun WalletScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(
+                    modifier = Modifier
+                        .padding(12.dp)
+                        .animateContentSize()
+                ) {
                     if (state.wallets.isNotEmpty()) {
                         var expanded by remember { mutableStateOf(false) }
+                        Text("Active wallet", color = Color(0xFF0ECB81), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -79,18 +118,14 @@ fun WalletScreen(
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                                     border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant))
                                 ) {
-                                    val selectedWallet = state.wallets.find { it.address == state.selectedAddress }
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
-                                            val name = selectedWallet?.name ?: ""
-                                            if (name.isNotEmpty()) {
-                                                Text(text = name, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                            }
+                                            Text(text = selectedLabel, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                                             Text(
-                                                text = state.selectedAddress.take(6) + "..." + state.selectedAddress.takeLast(4),
+                                                text = shortAddress,
                                                 fontSize = 10.sp,
                                                 color = Color.Gray
                                             )
@@ -138,7 +173,6 @@ fun WalletScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(
                                     onClick = { 
-                                        val selectedWallet = state.wallets.find { it.address == state.selectedAddress }
                                         if (selectedWallet != null) {
                                             addressInput = selectedWallet.address
                                             walletNameInput = selectedWallet.name
@@ -150,12 +184,14 @@ fun WalletScreen(
                                 }
                                 IconButton(
                                     onClick = { clipboardManager.setText(AnnotatedString(state.selectedAddress)) },
+                                    enabled = state.selectedAddress.isNotBlank(),
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = Color.Gray, modifier = Modifier.size(18.dp))
                                 }
                                 IconButton(
                                     onClick = { viewModel.deleteWallet(state.selectedAddress) },
+                                    enabled = state.selectedAddress.isNotBlank(),
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFE74C4C).copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
@@ -164,9 +200,13 @@ fun WalletScreen(
                         }
                         
                         Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    } else {
+                        Text("No saved wallets", color = Color(0xFF0ECB81), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Add a public wallet address to view balances by chain.", color = Color.Gray, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    Text("Explore New Wallet", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                    Text("Add or edit wallet", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                     
                     OutlinedTextField(
                         value = walletNameInput,
@@ -236,13 +276,37 @@ fun WalletScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Total Worth", color = Color(0xFF0ECB81), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Total Worth", color = Color(0xFF0ECB81), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("${allAssets.size} assets", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
                     Text(
                         text = "$${String.format("%,.2f", totalWorth)}",
                         color = Color.White,
                         fontSize = 36.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    AnimatedVisibility(visible = state.isLoading) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            color = Color(0xFF0ECB81),
+                            trackColor = MaterialTheme.colorScheme.background
+                        )
+                    }
+                    AnimatedVisibility(visible = state.error != null) {
+                        Text(
+                            text = state.error ?: "",
+                            color = Color(0xFFE74C4C),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     Row {
                         Text(text = "Assets: ", color = Color(0xFFF3BA2F), fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -255,15 +319,50 @@ fun WalletScreen(
             }
         }
 
+        if (!state.isLoading && state.selectedAddress.isNotBlank() && state.error == null && state.balances.isEmpty()) {
+            item {
+                EmptyBalancesCard()
+            }
+        }
+
         // Multi-Chain Cards
         state.balances.forEach { (chainName, assets) ->
-            item {
+            item(key = "chain-$chainName") {
                 ChainCard(chainName, assets)
             }
         }
         
         item {
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun EmptyBalancesCard() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF181A20)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text("No balances found", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text("Try refresh, check the address, or use another saved wallet.", color = Color.Gray, fontSize = 12.sp)
+            }
         }
     }
 }

@@ -20,4 +20,5 @@ interface MoralisApi {
         @Query("limit") limit: Int = 100,
         @Header("X-API-Key") apiKey: String
     ): MoralisTransactionsResponse
+
 }

@@ -410,7 +410,7 @@ fun PriceChart(
                     canvas.drawText(pctText, rectY.centerX(), py + tagGap + (thY * 2) + 10f, tagTextPaint)
 
                     // X-Axis Tag (Date)
-                    val dateText = (xAxis.valueFormatter as? ValueFormatter)?.getFormattedValue(h.x) ?: ""
+                    val dateText = xAxis.valueFormatter.getFormattedValue(h.x)
                     val twX = tagTextPaint.measureText(dateText)
                     val rectX = android.graphics.RectF(px - twX/2 - 10f, contentBottom, px + twX/2 + 10f, contentBottom + thY + 16f)
                     canvas.drawRoundRect(rectX, 4f, 4f, tagBackgroundPaint)

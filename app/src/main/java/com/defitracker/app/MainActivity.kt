@@ -3,6 +3,10 @@ package com.defitracker.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -46,62 +50,70 @@ class MainActivity : ComponentActivity() {
             DeFiTrackerTheme {
                 val navController = rememberNavController()
                 val screens = listOf(Screen.Pairs, Screen.Wallet, Screen.Transactions)
-                
+                val navBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentDestination = navBackStackEntry?.destination
+                val showMainChrome = currentDestination?.route != "crypto_detail/{symbol}/{source}"
+
                 Scaffold(
                     topBar = {
-                        CenterAlignedTopAppBar(
-                            title = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Image(
-                                        painter = painterResource(id = R.mipmap.ic_launcher_foreground),
-                                        contentDescription = "Logo",
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Octopus",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = Color.White
-                                    )
-                                }
-                            },
-                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                                containerColor = Color.Black
+                        if (showMainChrome) {
+                            CenterAlignedTopAppBar(
+                                title = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                                            contentDescription = "Logo",
+                                            modifier = Modifier.size(32.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Octopus",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color.White
+                                        )
+                                    }
+                                },
+                                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                    containerColor = MaterialTheme.colorScheme.background
+                                )
                             )
-                        )
+                        }
                     },
                     bottomBar = {
-                        NavigationBar(
-                            containerColor = Color.Black,
-                            contentColor = Color.White,
-                            tonalElevation = 0.dp
-                        ) {
-                            val navBackStackEntry by navController.currentBackStackEntryAsState()
-                            val currentDestination = navBackStackEntry?.destination
-                            screens.forEach { screen ->
-                                NavigationBarItem(
-                                    icon = { Icon(screen.icon, contentDescription = screen.label) },
-                                    label = { Text(screen.label) },
-                                    selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
-                                    onClick = {
-                                        navController.navigate(screen.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = true
+                        if (showMainChrome) {
+                            NavigationBar(
+                                containerColor = MaterialTheme.colorScheme.background,
+                                contentColor = Color.White,
+                                tonalElevation = 0.dp
+                            ) {
+                                screens.forEach { screen ->
+                                    val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
+                                    NavigationBarItem(
+                                        icon = { Icon(screen.icon, contentDescription = screen.label) },
+                                        label = { Text(screen.label) },
+                                        selected = selected,
+                                        onClick = {
+                                            if (!selected) {
+                                                navController.navigate(screen.route) {
+                                                    popUpTo(navController.graph.findStartDestination().id) {
+                                                        saveState = true
+                                                    }
+                                                    launchSingleTop = true
+                                                    restoreState = true
+                                                }
                                             }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = Color(0xFF0ECB81),
-                                        selectedTextColor = Color(0xFF0ECB81),
-                                        unselectedIconColor = Color.Gray,
-                                        unselectedTextColor = Color.Gray,
-                                        indicatorColor = Color.Transparent
+                                        },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = Color(0xFF0ECB81),
+                                            selectedTextColor = Color(0xFF0ECB81),
+                                            unselectedIconColor = Color.Gray,
+                                            unselectedTextColor = Color.Gray,
+                                            indicatorColor = MaterialTheme.colorScheme.surfaceVariant
+                                        )
                                     )
-                                )
+                                }
                             }
                         }
                     }
@@ -124,7 +136,31 @@ class MainActivity : ComponentActivity() {
 fun Navigation(navController: androidx.navigation.NavHostController) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Pairs.route
+        startDestination = Screen.Pairs.route,
+        enterTransition = {
+            fadeIn(animationSpec = tween(140)) + slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(220)
+            )
+        },
+        exitTransition = {
+            fadeOut(animationSpec = tween(90)) + slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(220)
+            )
+        },
+        popEnterTransition = {
+            fadeIn(animationSpec = tween(140)) + slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(220)
+            )
+        },
+        popExitTransition = {
+            fadeOut(animationSpec = tween(90)) + slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(220)
+            )
+        }
     ) {
         composable(Screen.Pairs.route) {
             CryptoListScreen(

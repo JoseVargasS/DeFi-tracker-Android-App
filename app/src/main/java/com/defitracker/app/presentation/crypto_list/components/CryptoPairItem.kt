@@ -1,5 +1,7 @@
 package com.defitracker.app.presentation.crypto_list.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,15 +11,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.defitracker.app.domain.model.CryptoPair
 
 @Composable
@@ -26,6 +31,18 @@ fun CryptoPairItem(
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val context = LocalContext.current
+    val changeColor by animateColorAsState(
+        targetValue = if (pair.isPositive) Color(0xFF1ECB81) else Color(0xFFE74C4C),
+        animationSpec = tween(durationMillis = 180),
+        label = "priceChangeColor"
+    )
+    val changeBackground by animateColorAsState(
+        targetValue = if (pair.isPositive) Color(0xFF132B22) else Color(0xFF2B171A),
+        animationSpec = tween(durationMillis = 180),
+        label = "priceChangeBackground"
+    )
+
     Surface(
         color = Color.Transparent,
         modifier = Modifier
@@ -47,7 +64,12 @@ fun CryptoPairItem(
                     .padding(4.dp)
             ) {
                 AsyncImage(
-                    model = "https://assets.coincap.io/assets/icons/${pair.baseAsset.lowercase()}@2x.png",
+                    model = ImageRequest.Builder(context)
+                        .data("https://assets.coincap.io/assets/icons/${pair.baseAsset.lowercase()}@2x.png")
+                        .crossfade(false)
+                        .memoryCacheKey("coin-${pair.baseAsset}")
+                        .diskCacheKey("coin-${pair.baseAsset}")
+                        .build(),
                     contentDescription = pair.baseAsset,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
@@ -88,11 +110,8 @@ fun CryptoPairItem(
                     color = Color.White
                 )
                 
-                val changeColor = if (pair.isPositive) Color(0xFF1ECB81) else Color(0xFFE74C4C)
-                val bgColor = if (pair.isPositive) Color(0xFF1A2E1E) else Color(0xFF2E1A1A)
-                
                 Surface(
-                    color = bgColor,
+                    color = changeBackground,
                     shape = RoundedCornerShape(4.dp),
                     modifier = Modifier.padding(top = 2.dp)
                 ) {

@@ -1,5 +1,11 @@
 package com.defitracker.app.presentation.crypto_list
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -7,14 +13,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -39,10 +42,11 @@ fun CryptoListScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val filteredSymbols = remember(searchQuery, state.availableSymbols) {
-        if (searchQuery.isEmpty()) emptyList()
-        else state.availableSymbols.filter { 
-            it.first.contains(searchQuery, ignoreCase = true) || 
-            it.second.contains(searchQuery, ignoreCase = true) 
+        val query = searchQuery.trim()
+        if (query.isEmpty()) emptyList()
+        else state.availableSymbols.filter {
+            it.first.contains(query, ignoreCase = true) ||
+            it.second.contains(query, ignoreCase = true)
         }.take(10)
     }
 
@@ -69,7 +73,12 @@ fun CryptoListScreen(
                         color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = { isSearchMode = !isSearchMode }) {
+                    IconButton(onClick = {
+                        isSearchMode = !isSearchMode
+                        if (isSearchMode.not()) {
+                            searchQuery = ""
+                        }
+                    }) {
                         Icon(
                             imageVector = if (isSearchMode) Icons.Default.Close else Icons.Default.Search,
                             contentDescription = "Search",
@@ -78,25 +87,72 @@ fun CryptoListScreen(
                     }
                 }
 
-                if (isSearchMode) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Search symbol (e.g. BTC)...", color = Color.Gray, fontSize = 14.sp) },
+                AnimatedVisibility(
+                    visible = isSearchMode,
+                    enter = fadeIn() + expandVertically(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .focusRequester(focusRequester),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            cursorColor = Color(0xFF1ECB81),
-                            focusedBorderColor = Color(0xFF1ECB81),
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        ),
-                        singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp)
-                    )
+                            .padding(horizontal = 16.dp)
+                            .animateContentSize()
+                    ) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Search symbol (e.g. BTC)...", color = Color.Gray, fontSize = 14.sp) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                                .focusRequester(focusRequester),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF1ECB81),
+                                focusedBorderColor = Color(0xFF1ECB81),
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp)
+                        )
+
+                        AnimatedVisibility(
+                            visible = searchQuery.isNotBlank(),
+                            enter = fadeIn() + expandVertically(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 280.dp),
+                                color = Color(0xFF1A1D23),
+                                shape = RoundedCornerShape(8.dp),
+                                tonalElevation = 2.dp
+                            ) {
+                                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                                    items(
+                                        items = filteredSymbols,
+                                        key = { (symbol, base) -> "$symbol-$base" }
+                                    ) { (symbol, base) ->
+                                        ListItem(
+                                            headlineContent = { Text(symbol, color = Color.White, fontSize = 14.sp) },
+                                            supportingContent = { Text(base, color = Color.Gray, fontSize = 11.sp) },
+                                            modifier = Modifier
+                                                .clickable {
+                                                    viewModel.onAddPair(symbol, base, "Binance")
+                                                    isSearchMode = false
+                                                    searchQuery = ""
+                                                }
+                                                .background(Color.Transparent),
+                                            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                                        )
+                                        Divider(color = Color.Gray.copy(alpha = 0.1f))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 
                 Box(
@@ -105,6 +161,7 @@ fun CryptoListScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .animateContentSize()
                 ) {
                     if (state.pairs.isEmpty() && !isSearchMode) {
                         Column(
@@ -124,7 +181,10 @@ fun CryptoListScreen(
                         }
                     } else {
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            items(state.pairs) { pair ->
+                            items(
+                                items = state.pairs,
+                                key = { pair -> "${pair.symbol}-${pair.source}" }
+                            ) { pair ->
                                 CryptoPairItem(
                                     pair = pair,
                                     onClick = { onNavigateToDetail(pair.symbol, pair.source) },
@@ -136,38 +196,6 @@ fun CryptoListScreen(
                     }
                 }
             }
-
-                // --- MODIFIED: Search Results Dropdown ---
-                if (isSearchMode && searchQuery.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .padding(top = 135.dp) // Positioned below the search field
-                            .heightIn(max = 280.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF1A1D23))
-                            .zIndex(10f)
-                    ) {
-                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                            items(filteredSymbols) { (symbol, base) ->
-                                ListItem(
-                                    headlineContent = { Text(symbol, color = Color.White, fontSize = 14.sp) },
-                                    supportingContent = { Text(base, color = Color.Gray, fontSize = 11.sp) },
-                                    modifier = Modifier
-                                        .clickable {
-                                            viewModel.onAddPair(symbol, base, "Binance")
-                                            isSearchMode = false
-                                            searchQuery = ""
-                                        }
-                                        .background(Color.Transparent),
-                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                                )
-                                Divider(color = Color.Gray.copy(alpha = 0.1f))
-                            }
-                        }
-                    }
-                }
         }
     }
 }

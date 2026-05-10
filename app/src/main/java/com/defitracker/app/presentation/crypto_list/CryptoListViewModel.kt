@@ -11,7 +11,11 @@ import com.defitracker.app.domain.model.CryptoPair
 import com.defitracker.app.domain.repository.CryptoRepository
 import com.defitracker.app.widget.CryptoWidget
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -29,6 +33,7 @@ class CryptoListViewModel @Inject constructor(
 
     private var getPairsJob: Job? = null
     private var refreshJob: Job? = null
+    private var isRefreshing = false
 
     init {
         getTrackedPairs()
@@ -51,6 +56,7 @@ class CryptoListViewModel @Inject constructor(
                     pairs = pairs
                 )
                 refreshPrices()
+                updateWidget()
             }
             .launchIn(viewModelScope)
     }
@@ -58,37 +64,55 @@ class CryptoListViewModel @Inject constructor(
     private fun startPriceUpdates() {
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
+            var tick = 0
             while (true) {
                 refreshPrices()
-                updateWidget()
-                delay(2000)
+                tick++
+                if (tick % WIDGET_REFRESH_TICKS == 0) {
+                    updateWidget()
+                }
+                delay(PRICE_REFRESH_MS)
             }
         }
     }
 
     private suspend fun refreshPrices() {
-        val updatedPairs = state.value.pairs.map { pair ->
-            try {
-                val detail = repository.getPairDetail(pair.symbol, pair.source)
-                pair.copy(
-                    price = detail.price,
-                    priceChangePercent = detail.priceChangePercent,
-                    isPositive = detail.isPositive
-                )
-            } catch (e: Exception) {
-                pair
+        val pairs = state.value.pairs
+        if (pairs.isEmpty() || isRefreshing) return
+
+        isRefreshing = true
+        try {
+            val updatedPairs = coroutineScope {
+                pairs.map { pair ->
+                    async {
+                        try {
+                            val detail = repository.getPairDetail(pair.symbol, pair.source)
+                            pair.copy(
+                                price = detail.price,
+                                priceChangePercent = detail.priceChangePercent,
+                                isPositive = detail.isPositive
+                            )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            pair
+                        }
+                    }
+                }.awaitAll()
             }
+            _state.value = state.value.copy(pairs = updatedPairs)
+        } finally {
+            isRefreshing = false
         }
-        _state.value = state.value.copy(pairs = updatedPairs)
     }
 
-    private fun updateWidget() {
-        viewModelScope.launch {
-            try {
-                CryptoWidget().updateAll(getApplication())
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+    private suspend fun updateWidget() {
+        try {
+            CryptoWidget().updateAll(getApplication())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -102,6 +126,11 @@ class CryptoListViewModel @Inject constructor(
         viewModelScope.launch {
             repository.removeTrackedPair(symbol)
         }
+    }
+
+    private companion object {
+        const val PRICE_REFRESH_MS = 5_000L
+        const val WIDGET_REFRESH_TICKS = 12
     }
 }
 

@@ -8,9 +8,12 @@ import androidx.lifecycle.viewModelScope
 import com.defitracker.app.domain.model.PairDetail
 import com.defitracker.app.domain.repository.CryptoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlin.math.sqrt
 
@@ -27,6 +30,7 @@ class CryptoDetailViewModel @Inject constructor(
     private val source: String = checkNotNull(savedStateHandle["source"])
 
     private var refreshJob: Job? = null
+    private var chartJob: Job? = null
 
     init {
         loadDetail()
@@ -50,7 +54,7 @@ class CryptoDetailViewModel @Inject constructor(
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
             while (true) {
-                delay(2000)
+                delay(DETAIL_REFRESH_MS)
                 try {
                     val detail = repository.getPairDetail(symbol, source)
                     val currentPrice = detail.price.toDoubleOrNull() ?: 0.0
@@ -72,94 +76,113 @@ class CryptoDetailViewModel @Inject constructor(
                             candles = updatedCandles
                         )
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {}
             }
         }
     }
 
     fun loadChartData(interval: String) {
-        viewModelScope.launch {
-            _state.value = state.value.copy(selectedInterval = interval)
+        val normalizedInterval = interval.lowercase()
+        if (normalizedInterval == state.value.selectedInterval && state.value.candles.isNotEmpty()) return
+
+        chartJob?.cancel()
+        chartJob = viewModelScope.launch {
+            _state.value = state.value.copy(selectedInterval = normalizedInterval, isLoading = true, error = "")
             try {
-                val rawKlines = repository.getKlines(symbol, interval, source)
-                val candles = rawKlines.map {
-                    CandleData(
-                        time = (it[0] as? Number)?.toLong() ?: it[0].toString().toLongOrNull() ?: 0L,
-                        open = it[1].toString().toDoubleOrNull() ?: 0.0,
-                        high = it[2].toString().toDoubleOrNull() ?: 0.0,
-                        low = it[3].toString().toDoubleOrNull() ?: 0.0,
-                        close = it[4].toString().toDoubleOrNull() ?: 0.0,
-                        volume = it[5].toString().toDoubleOrNull() ?: 0.0
+                val rawKlines = repository.getKlines(symbol, normalizedInterval, source)
+                val chartData = withContext(Dispatchers.Default) {
+                    val candles = rawKlines.map {
+                        CandleData(
+                            time = (it[0] as? Number)?.toLong() ?: it[0].toString().toLongOrNull() ?: 0L,
+                            open = it[1].toString().toDoubleOrNull() ?: 0.0,
+                            high = it[2].toString().toDoubleOrNull() ?: 0.0,
+                            low = it[3].toString().toDoubleOrNull() ?: 0.0,
+                            close = it[4].toString().toDoubleOrNull() ?: 0.0,
+                            volume = it.getOrNull(5)?.toString()?.toDoubleOrNull() ?: 0.0
+                        )
+                    }.filter { it.time > 0 }
+
+                    if (candles.isEmpty()) {
+                        return@withContext ChartComputation()
+                    }
+
+                    val period = 20
+                    val multiplier = 2.0
+                    val bbUpper = mutableListOf<Pair<Long, Double>>()
+                    val bbMiddle = mutableListOf<Pair<Long, Double>>()
+                    val bbLower = mutableListOf<Pair<Long, Double>>()
+
+                    for (i in candles.indices) {
+                        if (i >= period - 1) {
+                            val slice = candles.subList(i - period + 1, i + 1)
+                            val sma = slice.sumOf { it.close } / period
+                            val variance = slice.sumOf { Math.pow(it.close - sma, 2.0) } / period
+                            val stdDev = sqrt(variance)
+
+                            val time = candles[i].time
+                            bbMiddle.add(time to sma)
+                            bbUpper.add(time to (sma + multiplier * stdDev))
+                            bbLower.add(time to (sma - multiplier * stdDev))
+                        }
+                    }
+
+                    val stochK = mutableListOf<Pair<Long, Double>>()
+                    val stochD = mutableListOf<Pair<Long, Double>>()
+                    val rsiValues = calculateRSI(candles, 14)
+
+                    if (rsiValues.size >= 14) {
+                        val stochRSI = mutableListOf<Double>()
+                        for (i in rsiValues.indices) {
+                            if (i >= 13) {
+                                val slice = rsiValues.subList(i - 13, i + 1)
+                                val low = slice.minOrNull() ?: 0.0
+                                val high = slice.maxOrNull() ?: 100.0
+                                val current = rsiValues[i]
+                                val s = if (high - low != 0.0) (current - low) / (high - low) * 100 else 0.0
+                                stochRSI.add(s)
+                            } else {
+                                stochRSI.add(0.0)
+                            }
+                        }
+
+                        val smoothK = calculateSMA(stochRSI, 3)
+                        val smoothD = calculateSMA(smoothK, 3)
+
+                        for (i in smoothK.indices) {
+                            val candleIndex = i + (candles.size - smoothK.size)
+                            if (candleIndex >= 0) {
+                                stochK.add(candleIndex.toLong() to smoothK[i])
+                                stochD.add(candleIndex.toLong() to smoothD[i])
+                            }
+                        }
+                    }
+
+                    ChartComputation(
+                        candles = candles,
+                        bbUpper = bbUpper,
+                        bbMiddle = bbMiddle,
+                        bbLower = bbLower,
+                        stochK = stochK,
+                        stochD = stochD
                     )
-                }.filter { it.time > 0 }
-
-                if (candles.isEmpty()) return@launch
-
-                // Calculate Bollinger Bands
-                val period = 20
-                val multiplier = 2.0
-                val bbUpper = mutableListOf<Pair<Long, Double>>()
-                val bbMiddle = mutableListOf<Pair<Long, Double>>()
-                val bbLower = mutableListOf<Pair<Long, Double>>()
-
-                for (i in candles.indices) {
-                    if (i >= period - 1) {
-                        val slice = candles.subList(i - period + 1, i + 1)
-                        val sma = slice.sumOf { it.close } / period
-                        val variance = slice.sumOf { Math.pow(it.close - sma, 2.0) } / period
-                        val stdDev = sqrt(variance)
-                        
-                        val time = candles[i].time
-                        bbMiddle.add(time to sma)
-                        bbUpper.add(time to (sma + multiplier * stdDev))
-                        bbLower.add(time to (sma - multiplier * stdDev))
-                    }
-                }
-
-                // Calculate StochRSI (14, 14, 3, 3)
-                val stochK = mutableListOf<Pair<Long, Double>>()
-                val stochD = mutableListOf<Pair<Long, Double>>()
-                val rsiValues = calculateRSI(candles, 14)
-                
-                if (rsiValues.size >= 14) {
-                    val stochRSI = mutableListOf<Double>()
-                    for (i in rsiValues.indices) {
-                        if (i >= 13) {
-                            val slice = rsiValues.subList(i - 13, i + 1)
-                            val low = slice.minOrNull() ?: 0.0
-                            val high = slice.maxOrNull() ?: 100.0
-                            val current = rsiValues[i]
-                            val s = if (high - low != 0.0) (current - low) / (high - low) * 100 else 0.0
-                            stochRSI.add(s)
-                        } else {
-                            stochRSI.add(0.0)
-                        }
-                    }
-                    
-                    // Smooth K (3)
-                    val smoothK = calculateSMA(stochRSI, 3)
-                    // Smooth D (3)
-                    val smoothD = calculateSMA(smoothK, 3)
-                    
-                    for (i in smoothK.indices) {
-                        val candleIndex = i + (candles.size - smoothK.size)
-                        if (candleIndex >= 0) {
-                            stochK.add(candleIndex.toFloat().toLong() to smoothK[i]) // Using index as "time" to align with chart
-                            stochD.add(candleIndex.toFloat().toLong() to smoothD[i])
-                        }
-                    }
                 }
 
                 _state.value = state.value.copy(
-                    candles = candles,
-                    bbUpper = bbUpper,
-                    bbMiddle = bbMiddle,
-                    bbLower = bbLower,
-                    stochK = stochK,
-                    stochD = stochD
+                    candles = chartData.candles,
+                    bbUpper = chartData.bbUpper,
+                    bbMiddle = chartData.bbMiddle,
+                    bbLower = chartData.bbLower,
+                    stochK = chartData.stochK,
+                    stochD = chartData.stochD,
+                    isLoading = false
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 e.printStackTrace()
+                _state.value = state.value.copy(isLoading = false, error = e.message ?: "Error")
             }
         }
     }
@@ -208,6 +231,10 @@ class CryptoDetailViewModel @Inject constructor(
         }
         return sma
     }
+
+    private companion object {
+        const val DETAIL_REFRESH_MS = 5_000L
+    }
 }
 
 data class CryptoDetailState(
@@ -230,4 +257,13 @@ data class CandleData(
     val low: Double,
     val close: Double,
     val volume: Double = 0.0
+)
+
+private data class ChartComputation(
+    val candles: List<CandleData> = emptyList(),
+    val bbUpper: List<Pair<Long, Double>> = emptyList(),
+    val bbMiddle: List<Pair<Long, Double>> = emptyList(),
+    val bbLower: List<Pair<Long, Double>> = emptyList(),
+    val stochK: List<Pair<Long, Double>> = emptyList(),
+    val stochD: List<Pair<Long, Double>> = emptyList()
 )

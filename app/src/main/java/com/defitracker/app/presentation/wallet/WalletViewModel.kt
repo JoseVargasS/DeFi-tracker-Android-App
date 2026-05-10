@@ -8,6 +8,7 @@ import com.defitracker.app.data.local.WalletEntity
 import com.defitracker.app.data.remote.dto.CoinStatsBalanceDto
 import com.defitracker.app.domain.repository.CryptoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -61,6 +62,8 @@ class WalletViewModel @Inject constructor(
             try {
                 val balances = repository.getWalletBalances(address)
                 _state.value = _state.value.copy(balances = balances, isLoading = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }

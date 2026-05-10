@@ -3,7 +3,8 @@ package com.defitracker.app.data.remote.dto
 data class EtherscanResponse(
     val status: String,
     val message: String,
-    val result: List<EtherscanTransactionDto>
+    val result: List<EtherscanTransactionDto>,
+    val resultMessage: String? = null
 )
 
 data class EtherscanTransactionDto(

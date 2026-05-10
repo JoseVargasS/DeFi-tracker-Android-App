@@ -9,6 +9,7 @@ data class BinancePriceDto(
 
 data class Binance24hStatsDto(
     val symbol: String,
+    val lastPrice: String? = null,
     val priceChange: String,
     val priceChangePercent: String,
     val highPrice: String,
