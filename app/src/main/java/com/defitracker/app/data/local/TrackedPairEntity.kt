@@ -8,5 +8,5 @@ data class TrackedPairEntity(
     @PrimaryKey val symbol: String, // e.g., "BTCUSDT"
     val baseAsset: String,
     val quoteAsset: String = "USDT",
-    val source: String = "Binance" // "Binance" or "HTX"
+    val source: String = "Binance"
 )

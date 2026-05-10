@@ -6,14 +6,9 @@ import com.defitracker.app.data.local.WalletDao
 import com.defitracker.app.data.local.WalletEntity
 import com.defitracker.app.data.remote.BinanceApi
 import com.defitracker.app.data.remote.CoinStatsApi
-import com.defitracker.app.data.remote.EtherscanApi
-import com.defitracker.app.data.remote.ExplorerApi
-import com.defitracker.app.data.remote.HTXApi
-import com.defitracker.app.data.remote.MoralisApi
 import com.defitracker.app.data.remote.dto.CoinStatsBalanceDto
 import com.defitracker.app.data.remote.dto.CoinStatsTransactionDto
 import com.defitracker.app.data.remote.dto.EtherscanTransactionDto
-import com.defitracker.app.data.remote.dto.MoralisTxDto
 import com.defitracker.app.domain.model.CryptoPair
 import com.defitracker.app.domain.model.PairDetail
 import com.defitracker.app.domain.repository.CryptoRepository
@@ -29,15 +24,7 @@ import javax.inject.Singleton
 @Singleton
 class CryptoRepositoryImpl @Inject constructor(
     private val binanceApi: BinanceApi,
-    private val htxApi: HTXApi,
     private val coinStatsApi: CoinStatsApi,
-    private val etherscanApi: EtherscanApi,
-    private val bscScanApi: ExplorerApi,
-    private val polygonScanApi: ExplorerApi,
-    private val baseScanApi: ExplorerApi,
-    private val optimismScanApi: ExplorerApi,
-    private val arbiscanApi: ExplorerApi,
-    private val moralisApi: MoralisApi,
     private val trackedPairDao: TrackedPairDao,
     private val walletDao: WalletDao
 ) : CryptoRepository {
@@ -73,35 +60,19 @@ class CryptoRepositoryImpl @Inject constructor(
 
     override suspend fun getPairDetail(symbol: String, source: String): PairDetail {
         return try {
-            if (source == "HTX") {
-                val res = htxApi.getMarketDetailMerged(symbol.lowercase())
-                val tick = res.tick
-                PairDetail(
-                    symbol = symbol,
-                    price = tick?.close?.let { formatPrice(it) } ?: "0.00",
-                    priceChange = (tick?.let { it.close - it.open } ?: 0.0).toString(),
-                    priceChangePercent = (tick?.let { (it.close - it.open) / it.open * 100 } ?: 0.0).format(2),
-                    highPrice = tick?.high?.toString() ?: "0.00",
-                    lowPrice = tick?.low?.toString() ?: "0.00",
-                    volume = tick?.amount?.toString() ?: "0.00",
-                    quoteVolume = tick?.vol?.toString() ?: "0.00",
-                    isPositive = (tick?.let { it.close >= it.open } ?: true)
-                )
-            } else {
-                val stats = binanceApi.get24hStats(symbol)
-                val priceDouble = stats.lastPrice?.toDoubleOrNull() ?: 0.0
-                PairDetail(
-                    symbol = symbol,
-                    price = formatPrice(priceDouble),
-                    priceChange = stats.priceChange,
-                    priceChangePercent = stats.priceChangePercent,
-                    highPrice = stats.highPrice,
-                    lowPrice = stats.lowPrice,
-                    volume = stats.volume,
-                    quoteVolume = stats.quoteVolume,
-                    isPositive = (stats.priceChangePercent.toDoubleOrNull() ?: 0.0) >= 0
-                )
-            }
+            val stats = binanceApi.get24hStats(symbol)
+            val priceDouble = stats.lastPrice?.toDoubleOrNull() ?: 0.0
+            PairDetail(
+                symbol = symbol,
+                price = formatPrice(priceDouble),
+                priceChange = stats.priceChange,
+                priceChangePercent = stats.priceChangePercent,
+                highPrice = stats.highPrice,
+                lowPrice = stats.lowPrice,
+                volume = stats.volume,
+                quoteVolume = stats.quoteVolume,
+                isPositive = (stats.priceChangePercent.toDoubleOrNull() ?: 0.0) >= 0
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -111,19 +82,7 @@ class CryptoRepositoryImpl @Inject constructor(
 
     override suspend fun getKlines(symbol: String, interval: String, source: String): List<List<Any>> {
         return try {
-            if (source == "HTX") {
-                val htxInterval = when(interval) {
-                    "1d" -> "1day"
-                    "4h" -> "4hour"
-                    "1h" -> "60min"
-                    "15m" -> "15min"
-                    else -> "1day"
-                }
-                val res = htxApi.getHistoryKline(symbol.lowercase(), htxInterval)
-                res.data?.map { listOf(it.id * 1000, it.open, it.high, it.low, it.close) } ?: emptyList()
-            } else {
-                binanceApi.getKlines(symbol, interval)
-            }
+            binanceApi.getKlines(symbol, interval)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -289,34 +248,6 @@ class CryptoRepositoryImpl @Inject constructor(
         )
     }
 
-    private fun moralisTxToDto(t: MoralisTxDto, networkName: String, nativeSymbol: String): EtherscanTransactionDto {
-        // Gson deserializa value como Double; usar toString() (ej. "5.0E18") y la UI lo parsea
-        val valueStr = when (t.value) {
-            is Number -> t.value.toString()
-            is String -> t.value.takeIf { it.isNotBlank() } ?: "0"
-            else -> "0"
-        }
-        val timeStamp = try {
-            if (!t.blockTimestamp.isNullOrBlank()) {
-                java.time.Instant.parse(t.blockTimestamp).epochSecond.toString()
-            } else "0"
-        } catch (_: Exception) { "0" }
-        return EtherscanTransactionDto(
-            hash = t.hash,
-            from = t.fromAddress,
-            to = t.toAddress,
-            value = valueStr,
-            timeStamp = timeStamp,
-            tokenSymbol = nativeSymbol,
-            tokenDecimal = "18",
-            tokenName = null,
-            input = null,
-            symbol = null,
-            decimals = null,
-            network = networkName
-        )
-    }
-
     private fun formatPrice(price: Double): String {
         return if (price < 1.0) {
             String.format(java.util.Locale.US, "%.6f", price)
@@ -324,8 +255,6 @@ class CryptoRepositoryImpl @Inject constructor(
             String.format(java.util.Locale.US, "%.2f", price)
         }
     }
-
-    private fun Double.format(digits: Int) = String.format(java.util.Locale.US, "%.${digits}f", this)
 
     private data class CoinStatsChain(val id: String, val name: String)
 }
