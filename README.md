@@ -1,64 +1,277 @@
-# DeFi Tracker - Android App
+# Octopus DeFi Tracker
 
-A premium, high-performance DeFi portfolio tracker for Android, built with Jetpack Compose. This app allows users to monitor crypto pairs, manage their multi-chain wallets, and view transaction history with a sleek, modern UI inspired by top-tier trading platforms.
+Android app for tracking crypto pairs, interactive price charts, multi-chain wallet balances, and transaction history. The app is built with Kotlin, Jetpack Compose, Hilt, Room, Retrofit, MPAndroidChart, Coil, and Glance widgets.
 
-## ✨ Features
+## What The App Does
 
-- **Real-time Pairs Tracking**: View live prices and 24h changes for crypto pairs (e.g., BTC/USDT, ETH/USDT).
-- **Advanced Charts**: Interactive candlestick charts with Bollinger Bands, StochRSI, and Volume indicators.
-- **Multi-Chain Wallet**: Support for Ethereum, BNB Smart Chain (BSC), and Base. View fragmented balances in a unified, professional card-based layout.
-- **Transaction History**: Track your activity across multiple networks with detailed transaction logs.
-- **Modern UI/UX**: Built with Jetpack Compose, featuring dark mode, smooth animations, and a professional aesthetic.
-- **App Widget**: Monitor your favorite crypto pairs directly from your home screen.
-- **Splash Screen**: Branded entry experience using the modern Android SplashScreen API.
+Octopus is organized around three main tabs:
 
-## 🛠 Tech Stack
+- `Pairs`: track USDT crypto pairs, search Binance symbols, view live prices, and open detail charts.
+- `Wallet`: save wallet addresses, inspect multi-chain token balances, copy/delete wallets, and refresh balances.
+- `History`: inspect wallet transactions grouped by network using CoinStats wallet transactions.
 
-- **Language**: Kotlin
-- **UI Framework**: Jetpack Compose (Material 3)
-- **Architecture**: MVVM (Model-View-ViewModel)
-- **Dependency Injection**: Dagger Hilt
-- **Asynchronous Programming**: Kotlin Coroutines & Flow
-- **Networking**: Retrofit & Gson
-- **Database**: Room Persistence Library
-- **Charts**: MPAndroidChart
-- **Image Loading**: Coil
-- **Widget**: Jetpack Glance
-- **Design**: Vanilla CSS-like styling in Compose for a premium look.
+The detail screen includes candlestick charts, volume, Bollinger Bands, and StochRSI indicators.
 
-## 🚀 Getting Started
+## Current Features
 
-### Prerequisites
+- Real-time pair tracking for Binance-backed symbols.
+- Search and add tracked crypto pairs.
+- Pair detail screen with candlestick chart, live price updates, volume, Bollinger Bands, and StochRSI.
+- Saved wallet list backed by Room.
+- Multi-chain wallet balances through CoinStats.
+- Transaction history through CoinStats, grouped by network.
+- Home screen widget for tracked crypto pairs using Jetpack Glance.
+- Compose navigation with animated transitions.
+- Dark Material 3 UI tuned for a trading/portfolio app.
+- Splash screen with app branding.
 
-- Android Studio Iguana or newer.
-- Android SDK 26 (Android 8.0) or higher.
+## Tech Stack
 
-### Installation
+- Language: Kotlin
+- UI: Jetpack Compose, Material 3, Compose Animation
+- Navigation: Navigation Compose
+- Dependency Injection: Hilt
+- Persistence: Room
+- Networking: Retrofit + Gson
+- Async: Kotlin Coroutines and Flow
+- Charts: MPAndroidChart through `AndroidView`
+- Images: Coil
+- Widgets: Jetpack Glance
+- Minimum SDK: 26
+- Target/Compile SDK: 34
+- Java/Kotlin target: JVM 17
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/JoseVargasS/DeFi-tracker-Android-Apps.git
-   ```
-2. Open the project in Android Studio.
-3. Sync Project with Gradle Files.
-4. Run the `app` module on an emulator or physical device.
-
-## 📦 Project Structure
+## Project Structure
 
 ```text
 app/src/main/java/com/defitracker/app/
-├── data/           # Repositories, APIs, and Local DB (Room)
-├── di/             # Hilt Modules
-├── domain/         # Models and Use Cases
-├── presentation/   # UI Components (Compose Screens & ViewModels)
-│   ├── crypto_list/
-│   ├── crypto_detail/
-│   ├── wallet/
-│   └── transactions/
-├── ui/             # Theme and Design System
-└── widget/         # Home Screen Widget Implementation
+|-- core/
+|   `-- Constants.kt
+|-- data/
+|   |-- local/
+|   |   |-- AppDatabase.kt
+|   |   |-- TrackedPairDao.kt
+|   |   |-- TrackedPairEntity.kt
+|   |   |-- WalletDao.kt
+|   |   `-- WalletEntity.kt
+|   |-- remote/
+|   |   |-- BinanceApi.kt
+|   |   |-- CoinStatsApi.kt
+|   |   `-- dto/
+|   `-- repository/
+|       `-- CryptoRepositoryImpl.kt
+|-- di/
+|   `-- AppModule.kt
+|-- domain/
+|   |-- model/
+|   `-- repository/
+|-- presentation/
+|   |-- crypto_detail/
+|   |-- crypto_list/
+|   |-- transactions/
+|   `-- wallet/
+|-- ui/theme/
+|-- widget/
+|-- DeFiTrackerApp.kt
+`-- MainActivity.kt
 ```
 
-## 📄 License
+## Data Sources
 
-This project is for demonstration purposes. All rights reserved.
+The app currently has clients for several APIs:
+
+- Binance: symbol search, ticker stats, prices, and klines.
+- CoinStats: wallet balances and transaction history.
+
+### API Keys
+
+API keys are currently stored in:
+
+```text
+app/src/main/java/com/defitracker/app/core/Constants.kt
+```
+
+Current constants include:
+
+- `COINSTATS_API_KEY`
+
+For production, move these keys out of source control. Recommended options:
+
+- `local.properties` + Gradle `buildConfigField`
+- encrypted remote config
+- backend proxy for third-party APIs
+
+## Setup
+
+### Requirements
+
+- Android Studio Iguana or newer.
+- Android SDK 34 installed.
+- JDK 17. Android Studio's bundled JBR works.
+- Internet access for Gradle dependencies and external APIs.
+
+### Open In Android Studio
+
+1. Open this directory in Android Studio.
+2. Let Gradle sync finish.
+3. Select the `app` configuration.
+4. Run on an emulator or physical device running Android 8.0+.
+
+### Command Line Build
+
+This repository currently contains `gradle/wrapper/gradle-wrapper.properties`, but does not include the wrapper scripts/JAR in the working tree. If wrapper files are restored, use:
+
+```bash
+./gradlew :app:assembleDebug
+```
+
+On Windows with an installed/cached Gradle distribution, build with Gradle and JDK 17:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+gradle :app:assembleDebug
+```
+
+In this workspace, the debug APK is generated at:
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
+
+## Main Screens
+
+### Pairs
+
+Files:
+
+- `presentation/crypto_list/CryptoListScreen.kt`
+- `presentation/crypto_list/CryptoListViewModel.kt`
+- `presentation/crypto_list/components/CryptoPairItem.kt`
+
+Behavior:
+
+- Loads available USDT symbols from Binance.
+- Adds/removes tracked pairs stored in Room.
+- Refreshes prices periodically.
+- Updates the Glance widget at a lower cadence than UI price refreshes.
+
+### Crypto Detail
+
+Files:
+
+- `presentation/crypto_detail/CryptoDetailScreen.kt`
+- `presentation/crypto_detail/CryptoDetailViewModel.kt`
+
+Behavior:
+
+- Reads `symbol` and `source` from navigation arguments.
+- Loads pair details and kline data.
+- Computes Bollinger Bands and StochRSI off the main thread.
+- Uses MPAndroidChart in Compose through `AndroidView`.
+
+### Wallet Explorer
+
+Files:
+
+- `presentation/wallet/WalletScreen.kt`
+- `presentation/wallet/WalletViewModel.kt`
+
+Behavior:
+
+- Saves wallets in Room.
+- Loads balances from CoinStats by chain.
+- Uses sequential calls with small delays to avoid API rate limits.
+- Shows real API/auth/rate-limit errors instead of silently treating them as empty balances.
+
+### Transaction History
+
+Files:
+
+- `presentation/transactions/TransactionsScreen.kt`
+- `presentation/transactions/TransactionsViewModel.kt`
+- `data/remote/dto/CoinStatsTransactionDto.kt`
+
+Behavior:
+
+- Uses CoinStats `/wallet/transactions`.
+- Queries networks sequentially to avoid rate limits.
+- Filters CoinStats `Fill` records because they are synthetic balance entries rather than useful user transactions.
+- Groups transactions by network in the UI.
+
+## Local Database
+
+Room database:
+
+```text
+data/local/AppDatabase.kt
+```
+
+Entities:
+
+- `TrackedPairEntity`
+- `WalletEntity`
+
+DAOs:
+
+- `TrackedPairDao`
+- `WalletDao`
+
+The database uses `fallbackToDestructiveMigration()` in `AppModule.kt`. This is convenient during early development, but production migrations should be added before real release use.
+
+## Dependency Injection
+
+Hilt module:
+
+```text
+app/src/main/java/com/defitracker/app/di/AppModule.kt
+```
+
+It provides:
+
+- Retrofit API clients.
+- Room database and DAOs.
+- `CryptoRepository` implementation.
+
+## Known Notes And Caveats
+
+- Do not make aggressive parallel calls to CoinStats; it can hit rate limits quickly.
+- Some third-party wallet transaction feeds include spam/fake tokens. UI should display the data clearly, but future filtering may be needed.
+- `fallbackToDestructiveMigration()` can wipe local Room data after schema changes.
+- API keys should not remain hard-coded for a public release.
+
+## Troubleshooting
+
+### Wallet balances show empty
+
+Check:
+
+- `COINSTATS_API_KEY` is valid.
+- The address is a public wallet address supported by CoinStats.
+- The API did not return 401/403/429.
+
+The app now surfaces common CoinStats auth/rate-limit errors in UI state.
+
+### Transaction history is empty
+
+Check:
+
+- The wallet is saved and selected.
+- CoinStats supports the selected chain/address.
+- CoinStats did not return synthetic-only records. `Fill` records are intentionally filtered.
+
+### Build cannot find Java
+
+Set `JAVA_HOME` to JDK 17. With Android Studio:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+```
+
+### Build cannot find Gradle
+
+Open in Android Studio, or restore the Gradle wrapper scripts and wrapper JAR. The project expects Gradle 8.10 based on `gradle/wrapper/gradle-wrapper.properties`.
+
+## License
+
+This project is for demonstration and personal development use unless a separate license is added.
