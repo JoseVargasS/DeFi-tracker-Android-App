@@ -88,7 +88,7 @@ class CryptoDetailViewModel @Inject constructor(
                     }
                 } catch (e: CancellationException) {
                     throw e
-                } catch (e: Exception) {}
+                } catch (_: Exception) {}
             }
         }
     }
@@ -163,13 +163,13 @@ class CryptoDetailViewModel @Inject constructor(
 
         val stochK = mutableListOf<Pair<Long, Double>>()
         val stochD = mutableListOf<Pair<Long, Double>>()
-        val rsiValues = calculateRSI(this, 14)
+        val rsiValues = calculateRSI(this, STOCH_RSI_PERIOD)
 
-        if (rsiValues.size >= 14) {
+        if (rsiValues.size >= STOCH_RSI_PERIOD) {
             val stochRSI = mutableListOf<Double>()
             for (i in rsiValues.indices) {
-                if (i >= 13) {
-                    val slice = rsiValues.subList(i - 13, i + 1)
+                if (i >= STOCH_RSI_PERIOD - 1) {
+                    val slice = rsiValues.subList(i - STOCH_RSI_PERIOD + 1, i + 1)
                     val low = slice.minOrNull() ?: 0.0
                     val high = slice.maxOrNull() ?: 100.0
                     val current = rsiValues[i]
@@ -180,8 +180,8 @@ class CryptoDetailViewModel @Inject constructor(
                 }
             }
 
-            val smoothK = calculateSMA(stochRSI, 3)
-            val smoothD = calculateSMA(smoothK, 3)
+            val smoothK = calculateSMA(stochRSI, STOCH_SMOOTH_PERIOD)
+            val smoothD = calculateSMA(smoothK, STOCH_SMOOTH_PERIOD)
 
             for (i in smoothK.indices) {
                 val candleIndex = i + (size - smoothK.size)
@@ -280,6 +280,8 @@ class CryptoDetailViewModel @Inject constructor(
     private companion object {
         const val DETAIL_REFRESH_MS = 5_000L
         const val DEFAULT_CHART_INTERVAL = "12h"
+        const val STOCH_RSI_PERIOD = 14
+        const val STOCH_SMOOTH_PERIOD = 3
     }
 }
 

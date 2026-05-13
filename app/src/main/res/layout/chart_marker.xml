@@ -19,7 +19,7 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">
         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:text="Open"
+            android:layout_weight="1" android:text="@string/chart_marker_open"
             android:textColor="#ADB1B8" android:textSize="10sp"/>
         <TextView android:id="@+id/tvOpen" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="10sp"/>
@@ -29,7 +29,7 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">
         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:text="High"
+            android:layout_weight="1" android:text="@string/chart_marker_high"
             android:textColor="#ADB1B8" android:textSize="10sp"/>
         <TextView android:id="@+id/tvHigh" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:textColor="#1ECB81" android:textSize="10sp"/>
@@ -39,7 +39,7 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">
         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:text="Low"
+            android:layout_weight="1" android:text="@string/chart_marker_low"
             android:textColor="#ADB1B8" android:textSize="10sp"/>
         <TextView android:id="@+id/tvLow" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:textColor="#F6465D" android:textSize="10sp"/>
@@ -49,7 +49,7 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">
         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:text="Close"
+            android:layout_weight="1" android:text="@string/chart_marker_close"
             android:textColor="#ADB1B8" android:textSize="10sp"/>
         <TextView android:id="@+id/tvClose" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="10sp"/>
@@ -59,7 +59,7 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">
         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:text="Chg"
+            android:layout_weight="1" android:text="@string/chart_marker_change"
             android:textColor="#ADB1B8" android:textSize="10sp"/>
         <TextView android:id="@+id/tvChange" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="10sp"/>
@@ -69,7 +69,7 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">
         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:text="%Chg"
+            android:layout_weight="1" android:text="@string/chart_marker_change_percent"
             android:textColor="#ADB1B8" android:textSize="10sp"/>
         <TextView android:id="@+id/tvChangePct" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="10sp"/>
@@ -79,7 +79,7 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal">
         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:text="Volume"
+            android:layout_weight="1" android:text="@string/chart_marker_volume"
             android:textColor="#ADB1B8" android:textSize="10sp"/>
         <TextView android:id="@+id/tvVolume" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="10sp"/>

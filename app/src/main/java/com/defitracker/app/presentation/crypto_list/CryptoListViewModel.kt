@@ -3,7 +3,6 @@ package com.defitracker.app.presentation.crypto_list
 import android.app.Application
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -105,7 +104,7 @@ class CryptoListViewModel @Inject constructor(
                             )
                         } catch (e: CancellationException) {
                             throw e
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             pair
                         }
                     }

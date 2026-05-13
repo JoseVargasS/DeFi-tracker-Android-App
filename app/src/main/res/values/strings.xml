@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">Octopus</string>
+    <string name="chart_marker_open">Open</string>
+    <string name="chart_marker_high">High</string>
+    <string name="chart_marker_low">Low</string>
+    <string name="chart_marker_close">Close</string>
+    <string name="chart_marker_change">Chg</string>
+    <string name="chart_marker_change_percent">%Chg</string>
+    <string name="chart_marker_volume">Volume</string>
 </resources>

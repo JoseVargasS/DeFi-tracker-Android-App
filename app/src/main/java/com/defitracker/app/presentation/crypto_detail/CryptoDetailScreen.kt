@@ -1,22 +1,20 @@
 package com.defitracker.app.presentation.crypto_detail
 
+import android.annotation.SuppressLint
 import android.graphics.Canvas
 import android.graphics.Color as GraphicsColor
 import android.graphics.DashPathEffect
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.RectF
 import android.widget.TextView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,11 +39,9 @@ import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.components.MarkerView
 import com.github.mikephil.charting.listener.ChartTouchListener
 import com.github.mikephil.charting.listener.OnChartGestureListener
-import com.github.mikephil.charting.renderer.DataRenderer
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
-import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,7 +104,7 @@ fun CryptoDetailScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = "≈$${String.format("%.2f", detail.price.toDoubleOrNull() ?: 0.0)}", color = Color.Gray, fontSize = 14.sp)
+                            Text(text = "≈$${String.format(Locale.US, "%.2f", detail.price.toDoubleOrNull() ?: 0.0)}", color = Color.Gray, fontSize = 14.sp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${if (detail.isPositive) "+" else ""}${detail.priceChangePercent}%",
@@ -252,9 +248,9 @@ private fun CryptoDetailState.viewportKey(): String {
 private fun formatVol(vol: String): String {
     val v = vol.toDoubleOrNull() ?: return vol
     return when {
-        v >= 1_000_000 -> String.format("%.2fM", v / 1_000_000)
-        v >= 1_000 -> String.format("%.2fK", v / 1_000)
-        else -> String.format("%.2f", v)
+        v >= 1_000_000 -> String.format(Locale.US, "%.2fM", v / 1_000_000)
+        v >= 1_000 -> String.format(Locale.US, "%.2fK", v / 1_000)
+        else -> String.format(Locale.US, "%.2f", v)
     }
 }
 
@@ -318,8 +314,8 @@ fun PriceChart(
                             downY = event.y
                         }
                         android.view.MotionEvent.ACTION_MOVE -> {
-                            val dx = kotlin.math.abs(event.x - downX)
-                            val dy = kotlin.math.abs(event.y - downY)
+                            val dx = abs(event.x - downX)
+                            val dy = abs(event.y - downY)
                             
                             // If highlight is shown and we move, update it and BLOCK chart panning
                             if (event.pointerCount == 1 && (dx > 10f || dy > 10f) && highlighted != null && highlighted.isNotEmpty()) {
@@ -336,13 +332,14 @@ fun PriceChart(
                             }
                         }
                         android.view.MotionEvent.ACTION_UP -> {
-                            val dx = kotlin.math.abs(event.x - downX)
-                            val dy = kotlin.math.abs(event.y - downY)
+                            val dx = abs(event.x - downX)
+                            val dy = abs(event.y - downY)
                             
                             isDragEnabled = true // Restore for next potential gesture
                             
                             // Detect a TAP
                             if (dx < 10f && dy < 10f) {
+                                performClick()
                                 if (highlighted != null && highlighted.isNotEmpty()) {
                                     // Toggle OFF
                                     highlightValue(null)
@@ -360,6 +357,11 @@ fun PriceChart(
                         }
                     }
                     return super.onTouchEvent(event)
+                }
+
+                override fun performClick(): Boolean {
+                    super.performClick()
+                    return true
                 }
 
                 override fun onDraw(canvas: Canvas) {
@@ -434,7 +436,7 @@ fun PriceChart(
                     val pctFromCurrent = if (currentPrice != 0.0) (priceAtTouch - currentPrice) / currentPrice * 100 else 0.0
                     
                     val priceText = formatPriceForChart(priceAtTouch)
-                    val pctText = String.format("%+.2f%%", pctFromCurrent)
+                    val pctText = String.format(Locale.US, "%+.2f%%", pctFromCurrent)
                     
                     val twPrice = tagTextPaint.measureText(priceText)
                     val twPct = tagTextPaint.measureText(pctText)
@@ -447,7 +449,7 @@ fun PriceChart(
                     val offsetRight = if (tagRight > chartWidth) tagRight - chartWidth + 4f else 0f
                     
                     val tagGap = 6f
-                    val rectY = android.graphics.RectF(
+                    val rectY = RectF(
                         contentRight - offsetRight, 
                         py + tagGap, 
                         contentRight + maxWidth + 20f - offsetRight, 
@@ -460,7 +462,7 @@ fun PriceChart(
                     // X-Axis Tag (Date)
                     val dateText = xAxis.valueFormatter.getFormattedValue(h.x)
                     val twX = tagTextPaint.measureText(dateText)
-                    val rectX = android.graphics.RectF(px - twX/2 - 10f, contentBottom, px + twX/2 + 10f, contentBottom + thY + 16f)
+                    val rectX = RectF(px - twX/2 - 10f, contentBottom, px + twX/2 + 10f, contentBottom + thY + 16f)
                     canvas.drawRoundRect(rectX, 4f, 4f, tagBackgroundPaint)
                     canvas.drawText(dateText, rectX.centerX(), rectX.centerY() + thY/3, tagTextPaint)
                 }
@@ -762,10 +764,10 @@ fun StochRSIChart(
                     }
                     
                     if (hasVal) {
-                        val kText = "K: ${String.format(java.util.Locale.US, "%.2f", kVal)}  "
+                        val kText = "K: ${String.format(Locale.US, "%.2f", kVal)}  "
                         canvas.drawText(kText, textX, textY, kPaint)
                         val kWidth = kPaint.measureText(kText)
-                        val dText = "D: ${String.format(java.util.Locale.US, "%.2f", dVal)}"
+                        val dText = "D: ${String.format(Locale.US, "%.2f", dVal)}"
                         canvas.drawText(dText, textX + kWidth, textY, dPaint)
                     }
                 }
@@ -957,7 +959,7 @@ private fun createBBLineDataSet(entries: List<Entry>, label: String, color: Int,
 
 // ─── IN-PLACE UPDATE HELPERS ─────────────────────────────────────────────────
 private fun updateLastCandleInPlace(chart: CombinedChart, state: CryptoDetailState) {
-    val cd = chart.data as? CombinedData ?: return
+    val cd = chart.data ?: return
     val last = state.candles.lastOrNull() ?: return
     val lastIdx = state.candles.size - 1
     cd.getCandleData()?.dataSets?.forEach { ds ->
@@ -992,7 +994,7 @@ private fun updateLastCandleInPlace(chart: CombinedChart, state: CryptoDetailSta
 }
 
 private fun updateLastVolumeInPlace(chart: BarChart, state: CryptoDetailState) {
-    val bd = chart.data as? BarData ?: return
+    val bd = chart.data ?: return
     val last = state.candles.lastOrNull() ?: return
     val lastIdx = state.candles.size - 1
     bd.dataSets.forEach { ds ->
@@ -1005,7 +1007,7 @@ private fun updateLastVolumeInPlace(chart: BarChart, state: CryptoDetailState) {
 }
 
 private fun updateLastStochInPlace(chart: LineChart, state: CryptoDetailState) {
-    val ld = chart.data as? LineData ?: return
+    val ld = chart.data ?: return
     val lastK = state.stochK.lastOrNull()
     val lastD = state.stochD.lastOrNull()
     if (lastK != null && ld.dataSets.size > 0) {
@@ -1065,6 +1067,7 @@ private const val INITIAL_VISIBLE_CANDLES = 100f
  * Full OKX-style marker: shows OHLCV card next to the candle.
  * Fix 3: accepts a lambda so it always reads the latest [CryptoDetailState].
  */
+@SuppressLint("ViewConstructor")
 class OKXChartMarker(
     context: android.content.Context,
     private val stateProvider: () -> CryptoDetailState
@@ -1112,7 +1115,7 @@ class OKXChartMarker(
                 tvClose.text = formatPriceForChart(candle.close)
                 tvChange.text = (if (isUp) "+" else "") + formatPriceForChart(change)
                 tvChange.setTextColor(changeColor)
-                tvChangePct.text = (if (isUp) "+" else "") + String.format("%.2f", changePct) + "%"
+                tvChangePct.text = (if (isUp) "+" else "") + String.format(Locale.US, "%.2f", changePct) + "%"
                 tvChangePct.setTextColor(changeColor)
                 tvVolume.text = formatVolDouble(candle.volume)
             }
@@ -1136,8 +1139,8 @@ class OKXChartMarker(
     }
 
     private fun formatVolDouble(v: Double): String = when {
-        v >= 1_000_000 -> String.format("%.2fM", v / 1_000_000)
-        v >= 1_000 -> String.format("%.2fK", v / 1_000)
-        else -> String.format("%.2f", v)
+        v >= 1_000_000 -> String.format(Locale.US, "%.2fM", v / 1_000_000)
+        v >= 1_000 -> String.format(Locale.US, "%.2fK", v / 1_000)
+        else -> String.format(Locale.US, "%.2f", v)
     }
 }

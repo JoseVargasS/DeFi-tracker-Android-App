@@ -7,6 +7,7 @@ import retrofit2.http.GET
 import retrofit2.http.Query
 
 interface BinanceApi {
+    @Suppress("unused")
     @GET("ticker/price")
     suspend fun getPrice(@Query("symbol") symbol: String): BinancePriceDto
 

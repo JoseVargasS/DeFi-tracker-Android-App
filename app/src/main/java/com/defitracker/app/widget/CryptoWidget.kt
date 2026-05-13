@@ -2,6 +2,7 @@ package com.defitracker.app.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.*
@@ -13,14 +14,19 @@ import androidx.glance.action.ActionParameters
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
-import com.defitracker.app.R
 import com.defitracker.app.domain.model.CryptoPair
 import com.defitracker.app.domain.repository.CryptoRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+
+private val WidgetDarkGray = ColorProvider(Color(0xFF16171A))
+private val WidgetWhite = ColorProvider(Color(0xFFFFFFFF))
+private val WidgetGreen = ColorProvider(Color(0xFF0ECB81))
+private val WidgetRed = ColorProvider(Color(0xFFF6465D))
 
 class CryptoWidget : GlanceAppWidget() {
 
@@ -43,7 +49,11 @@ class CryptoWidget : GlanceAppWidget() {
             try {
                 val detail = repository.getPairDetail(pair.symbol, pair.source)
                 pair.copy(price = detail.price, priceChangePercent = detail.priceChangePercent, isPositive = detail.isPositive)
-            } catch (e: Exception) { pair }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                pair
+            }
         }
 
         provideContent {
@@ -58,7 +68,7 @@ class CryptoWidget : GlanceAppWidget() {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(ColorProvider(R.color.dark_gray))
+                .background(WidgetDarkGray)
                 .padding(12.dp)
         ) {
             Row(
@@ -68,7 +78,7 @@ class CryptoWidget : GlanceAppWidget() {
                 Text(
                     text = "DeFi Tracker Live",
                     style = TextStyle(
-                        color = ColorProvider(R.color.white),
+                        color = WidgetWhite,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -80,7 +90,7 @@ class CryptoWidget : GlanceAppWidget() {
                         .padding(4.dp)
                         .clickable(actionRunCallback<RefreshActionCallback>()),
                     style = TextStyle(
-                        color = ColorProvider(R.color.binance_green),
+                        color = WidgetGreen,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -88,7 +98,7 @@ class CryptoWidget : GlanceAppWidget() {
             }
             Spacer(modifier = GlanceModifier.height(12.dp))
             if (pairs.isEmpty()) {
-                Text(text = "No pairs added", style = TextStyle(color = ColorProvider(R.color.white)))
+                Text(text = "No pairs added", style = TextStyle(color = WidgetWhite))
             } else {
                 pairs.forEach { pair ->
                     Row(
@@ -99,18 +109,18 @@ class CryptoWidget : GlanceAppWidget() {
                     ) {
                         Text(
                             text = pair.baseAsset,
-                            style = TextStyle(color = ColorProvider(R.color.white), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            style = TextStyle(color = WidgetWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         )
                         Spacer(modifier = GlanceModifier.defaultWeight())
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 text = "$${pair.price}",
-                                style = TextStyle(color = ColorProvider(R.color.white), fontSize = 14.sp)
+                                style = TextStyle(color = WidgetWhite, fontSize = 14.sp)
                             )
-                            val colorRes = if (pair.isPositive) R.color.binance_green else R.color.binance_red
+                            val priceChangeColor = if (pair.isPositive) WidgetGreen else WidgetRed
                             Text(
                                 text = "${if(pair.isPositive) "+" else ""}${pair.priceChangePercent}%",
-                                style = TextStyle(color = ColorProvider(colorRes), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                style = TextStyle(color = priceChangeColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             )
                         }
                     }

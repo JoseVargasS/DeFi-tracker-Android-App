@@ -75,7 +75,7 @@ class CryptoRepositoryImpl @Inject constructor(
             )
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             PairDetail(symbol, "0.00", "0.00", "0.00", "0.00", "0.00", "0.00", "0.00", true)
         }
     }
@@ -107,7 +107,7 @@ class CryptoRepositoryImpl @Inject constructor(
             allKlines
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -122,7 +122,7 @@ class CryptoRepositoryImpl @Inject constructor(
             cachedSymbols
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
