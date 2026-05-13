@@ -41,6 +41,7 @@ import com.github.mikephil.charting.listener.OnChartGestureListener
 import com.github.mikephil.charting.renderer.DataRenderer
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -199,7 +200,15 @@ fun StatRow(label: String, value: String) {
 
 private fun formatDecimal(value: String): String {
     val d = value.toDoubleOrNull() ?: return value
-    return String.format("%.2f", d)
+    return formatPriceForChart(d)
+}
+
+private fun formatPriceForChart(value: Double): String {
+    return if (abs(value) < 1.0) {
+        String.format(Locale.US, "%.4f", value)
+    } else {
+        String.format(Locale.US, "%.2f", value)
+    }
 }
 
 private fun formatVol(vol: String): String {
@@ -340,7 +349,7 @@ fun PriceChart(
                         trans.pointValuesToPixel(pts)
                         val px = pts[0]
                         val py = pts[1]
-                        val label = String.format("%.2f", maxEntry.high)
+                        val label = formatPriceForChart(maxEntry.high)
                         val labelWidth = labelPaint.measureText(label)
                         val lineEndX = if (px + labelWidth + 16f < contentRight) px + 20f else px - 20f
                         canvas.drawLine(px, py, lineEndX, py, linePaint)
@@ -354,7 +363,7 @@ fun PriceChart(
                         trans.pointValuesToPixel(pts)
                         val px = pts[0]
                         val py = pts[1]
-                        val label = String.format("%.2f", minEntry.low)
+                        val label = formatPriceForChart(minEntry.low)
                         val labelWidth = labelPaint.measureText(label)
                         val lineEndX = if (px + labelWidth + 16f < contentRight) px + 20f else px - 20f
                         canvas.drawLine(px, py, lineEndX, py, linePaint)
@@ -385,7 +394,7 @@ fun PriceChart(
                     val currentPrice = stateRef.value.detail?.price?.toDoubleOrNull() ?: entries.lastOrNull()?.close ?: 0.0
                     val pctFromCurrent = if (currentPrice != 0.0) (priceAtTouch - currentPrice) / currentPrice * 100 else 0.0
                     
-                    val priceText = String.format("%.2f", priceAtTouch)
+                    val priceText = formatPriceForChart(priceAtTouch)
                     val pctText = String.format("%+.2f%%", pctFromCurrent)
                     
                     val twPrice = tagTextPaint.measureText(priceText)
@@ -430,6 +439,11 @@ fun PriceChart(
                 axisLeft.apply {
                     setLabelCount(6, false)
                     setPosition(YAxis.YAxisLabelPosition.INSIDE_CHART)
+                    valueFormatter = object : ValueFormatter() {
+                        override fun getFormattedValue(value: Float): String {
+                            return formatPriceForChart(value.toDouble())
+                        }
+                    }
                 }
 
                 onChartGestureListener = object : OnChartGestureListener {
@@ -864,11 +878,11 @@ class OKXChartMarker(
                 val isDaily = state.selectedInterval.contains("d", ignoreCase = true)
                 val sdf = if (isDaily) daySdf else hourSdf
                 tvTime.text = sdf.format(Date(candle.time))
-                tvOpen.text = String.format("%.2f", candle.open)
-                tvHigh.text = String.format("%.2f", candle.high)
-                tvLow.text = String.format("%.2f", candle.low)
-                tvClose.text = String.format("%.2f", candle.close)
-                tvChange.text = (if (isUp) "+" else "") + String.format("%.2f", change)
+                tvOpen.text = formatPriceForChart(candle.open)
+                tvHigh.text = formatPriceForChart(candle.high)
+                tvLow.text = formatPriceForChart(candle.low)
+                tvClose.text = formatPriceForChart(candle.close)
+                tvChange.text = (if (isUp) "+" else "") + formatPriceForChart(change)
                 tvChange.setTextColor(changeColor)
                 tvChangePct.text = (if (isUp) "+" else "") + String.format("%.2f", changePct) + "%"
                 tvChangePct.setTextColor(changeColor)
