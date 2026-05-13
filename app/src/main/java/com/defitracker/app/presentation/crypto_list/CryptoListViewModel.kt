@@ -43,8 +43,19 @@ class CryptoListViewModel @Inject constructor(
 
     private fun loadAvailableSymbols() {
         viewModelScope.launch {
-            val symbols = repository.getAvailableSymbols()
-            _state.value = state.value.copy(availableSymbols = symbols)
+            try {
+                val symbols = repository.getAvailableSymbols()
+                _state.value = state.value.copy(
+                    availableSymbols = symbols,
+                    symbolsError = if (symbols.isEmpty()) "Could not load symbols. Check your connection." else ""
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = state.value.copy(
+                    symbolsError = "Could not load symbols: ${e.message}"
+                )
+            }
         }
     }
 
@@ -128,6 +139,11 @@ class CryptoListViewModel @Inject constructor(
         }
     }
 
+    fun retryLoadSymbols() {
+        _state.value = state.value.copy(symbolsError = "")
+        loadAvailableSymbols()
+    }
+
     private companion object {
         const val PRICE_REFRESH_MS = 5_000L
         const val WIDGET_REFRESH_TICKS = 12
@@ -138,5 +154,6 @@ data class CryptoListState(
     val pairs: List<CryptoPair> = emptyList(),
     val availableSymbols: List<Pair<String, String>> = emptyList(),
     val isLoading: Boolean = false,
-    val error: String = ""
+    val error: String = "",
+    val symbolsError: String = ""
 )

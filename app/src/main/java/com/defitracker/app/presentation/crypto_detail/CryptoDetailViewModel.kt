@@ -33,9 +33,10 @@ class CryptoDetailViewModel @Inject constructor(
     private var chartJob: Job? = null
 
     init {
+        _state.value = state.value.copy(symbol = symbol)
         loadDetail()
         startUpdates()
-        loadChartData("1d")
+        loadChartData(DEFAULT_CHART_INTERVAL)
     }
 
     private fun loadDetail() {
@@ -70,10 +71,19 @@ class CryptoDetailViewModel @Inject constructor(
                             )
                             updatedCandles[updatedCandles.size - 1] = newLastCandle
                         }
+
+                        val chartData = withContext(Dispatchers.Default) {
+                            updatedCandles.toChartComputation()
+                        }
                         
                         _state.value = _state.value.copy(
                             detail = detail,
-                            candles = updatedCandles
+                            candles = chartData.candles,
+                            bbUpper = chartData.bbUpper,
+                            bbMiddle = chartData.bbMiddle,
+                            bbLower = chartData.bbLower,
+                            stochK = chartData.stochK,
+                            stochD = chartData.stochD
                         )
                     }
                 } catch (e: CancellationException) {
@@ -84,14 +94,14 @@ class CryptoDetailViewModel @Inject constructor(
     }
 
     fun loadChartData(interval: String) {
-        val normalizedInterval = interval.lowercase()
+        val normalizedInterval = interval.trim()
         if (normalizedInterval == state.value.selectedInterval && state.value.candles.isNotEmpty()) return
 
         chartJob?.cancel()
         chartJob = viewModelScope.launch {
             _state.value = state.value.copy(selectedInterval = normalizedInterval, isLoading = true, error = "")
             try {
-                val rawKlines = repository.getKlines(symbol, normalizedInterval, source)
+                val rawKlines = repository.getKlines(symbol, normalizedInterval.toBinanceInterval(), source)
                 val chartData = withContext(Dispatchers.Default) {
                     val candles = rawKlines.map {
                         CandleData(
@@ -102,71 +112,13 @@ class CryptoDetailViewModel @Inject constructor(
                             close = it[4].toString().toDoubleOrNull() ?: 0.0,
                             volume = it.getOrNull(5)?.toString()?.toDoubleOrNull() ?: 0.0
                         )
-                    }.filter { it.time > 0 }
+                    }.filter { it.time > 0 }.aggregateForInterval(normalizedInterval)
 
                     if (candles.isEmpty()) {
                         return@withContext ChartComputation()
                     }
 
-                    val period = 20
-                    val multiplier = 2.0
-                    val bbUpper = mutableListOf<Pair<Long, Double>>()
-                    val bbMiddle = mutableListOf<Pair<Long, Double>>()
-                    val bbLower = mutableListOf<Pair<Long, Double>>()
-
-                    for (i in candles.indices) {
-                        if (i >= period - 1) {
-                            val slice = candles.subList(i - period + 1, i + 1)
-                            val sma = slice.sumOf { it.close } / period
-                            val variance = slice.sumOf { Math.pow(it.close - sma, 2.0) } / period
-                            val stdDev = sqrt(variance)
-
-                            val time = candles[i].time
-                            bbMiddle.add(time to sma)
-                            bbUpper.add(time to (sma + multiplier * stdDev))
-                            bbLower.add(time to (sma - multiplier * stdDev))
-                        }
-                    }
-
-                    val stochK = mutableListOf<Pair<Long, Double>>()
-                    val stochD = mutableListOf<Pair<Long, Double>>()
-                    val rsiValues = calculateRSI(candles, 14)
-
-                    if (rsiValues.size >= 14) {
-                        val stochRSI = mutableListOf<Double>()
-                        for (i in rsiValues.indices) {
-                            if (i >= 13) {
-                                val slice = rsiValues.subList(i - 13, i + 1)
-                                val low = slice.minOrNull() ?: 0.0
-                                val high = slice.maxOrNull() ?: 100.0
-                                val current = rsiValues[i]
-                                val s = if (high - low != 0.0) (current - low) / (high - low) * 100 else 0.0
-                                stochRSI.add(s)
-                            } else {
-                                stochRSI.add(0.0)
-                            }
-                        }
-
-                        val smoothK = calculateSMA(stochRSI, 3)
-                        val smoothD = calculateSMA(smoothK, 3)
-
-                        for (i in smoothK.indices) {
-                            val candleIndex = i + (candles.size - smoothK.size)
-                            if (candleIndex >= 0) {
-                                stochK.add(candleIndex.toLong() to smoothK[i])
-                                stochD.add(candleIndex.toLong() to smoothD[i])
-                            }
-                        }
-                    }
-
-                    ChartComputation(
-                        candles = candles,
-                        bbUpper = bbUpper,
-                        bbMiddle = bbMiddle,
-                        bbLower = bbLower,
-                        stochK = stochK,
-                        stochD = stochD
-                    )
+                    candles.toChartComputation()
                 }
 
                 _state.value = state.value.copy(
@@ -185,6 +137,69 @@ class CryptoDetailViewModel @Inject constructor(
                 _state.value = state.value.copy(isLoading = false, error = e.message ?: "Error")
             }
         }
+    }
+
+    private fun List<CandleData>.toChartComputation(): ChartComputation {
+        if (isEmpty()) return ChartComputation()
+
+        val period = 20
+        val multiplier = 2.0
+        val bbUpper = mutableListOf<Pair<Long, Double>>()
+        val bbMiddle = mutableListOf<Pair<Long, Double>>()
+        val bbLower = mutableListOf<Pair<Long, Double>>()
+
+        for (i in indices) {
+            if (i >= period - 1) {
+                val slice = subList(i - period + 1, i + 1)
+                val sma = slice.sumOf { it.close } / period
+                val variance = slice.sumOf { Math.pow(it.close - sma, 2.0) } / period
+                val stdDev = sqrt(variance)
+
+                bbMiddle.add(i.toLong() to sma)
+                bbUpper.add(i.toLong() to (sma + multiplier * stdDev))
+                bbLower.add(i.toLong() to (sma - multiplier * stdDev))
+            }
+        }
+
+        val stochK = mutableListOf<Pair<Long, Double>>()
+        val stochD = mutableListOf<Pair<Long, Double>>()
+        val rsiValues = calculateRSI(this, 14)
+
+        if (rsiValues.size >= 14) {
+            val stochRSI = mutableListOf<Double>()
+            for (i in rsiValues.indices) {
+                if (i >= 13) {
+                    val slice = rsiValues.subList(i - 13, i + 1)
+                    val low = slice.minOrNull() ?: 0.0
+                    val high = slice.maxOrNull() ?: 100.0
+                    val current = rsiValues[i]
+                    val s = if (high - low != 0.0) (current - low) / (high - low) * 100 else 0.0
+                    stochRSI.add(s)
+                } else {
+                    stochRSI.add(0.0)
+                }
+            }
+
+            val smoothK = calculateSMA(stochRSI, 3)
+            val smoothD = calculateSMA(smoothK, 3)
+
+            for (i in smoothK.indices) {
+                val candleIndex = i + (size - smoothK.size)
+                if (candleIndex >= 0) {
+                    stochK.add(candleIndex.toLong() to smoothK[i])
+                    stochD.add(candleIndex.toLong() to smoothD[i])
+                }
+            }
+        }
+
+        return ChartComputation(
+            candles = this,
+            bbUpper = bbUpper,
+            bbMiddle = bbMiddle,
+            bbLower = bbLower,
+            stochK = stochK,
+            stochD = stochD
+        )
     }
 
     private fun calculateRSI(candles: List<CandleData>, period: Int): List<Double> {
@@ -232,12 +247,44 @@ class CryptoDetailViewModel @Inject constructor(
         return sma
     }
 
+    private fun String.toBinanceInterval(): String {
+        return when (this) {
+            "5d" -> "1d"
+            "2w" -> "1w"
+            "1mo" -> "1M"
+            else -> this
+        }
+    }
+
+    private fun List<CandleData>.aggregateForInterval(interval: String): List<CandleData> {
+        val chunkSize = when (interval) {
+            "5d" -> 5
+            "2w" -> 2
+            else -> return this
+        }
+
+        return chunked(chunkSize).mapNotNull { chunk ->
+            val first = chunk.firstOrNull() ?: return@mapNotNull null
+            val last = chunk.last()
+            CandleData(
+                time = first.time,
+                open = first.open,
+                high = chunk.maxOf { it.high },
+                low = chunk.minOf { it.low },
+                close = last.close,
+                volume = chunk.sumOf { it.volume }
+            )
+        }
+    }
+
     private companion object {
         const val DETAIL_REFRESH_MS = 5_000L
+        const val DEFAULT_CHART_INTERVAL = "12h"
     }
 }
 
 data class CryptoDetailState(
+    val symbol: String = "",
     val detail: PairDetail? = null,
     val candles: List<CandleData> = emptyList(),
     val bbUpper: List<Pair<Long, Double>> = emptyList(),
@@ -245,7 +292,7 @@ data class CryptoDetailState(
     val bbLower: List<Pair<Long, Double>> = emptyList(),
     val stochK: List<Pair<Long, Double>> = emptyList(),
     val stochD: List<Pair<Long, Double>> = emptyList(),
-    val selectedInterval: String = "1d",
+    val selectedInterval: String = "12h",
     val isLoading: Boolean = false,
     val error: String = ""
 )

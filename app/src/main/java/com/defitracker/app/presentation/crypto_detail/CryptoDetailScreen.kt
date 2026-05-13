@@ -3,11 +3,14 @@ package com.defitracker.app.presentation.crypto_detail
 import android.graphics.Canvas
 import android.graphics.Color as GraphicsColor
 import android.graphics.DashPathEffect
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.widget.TextView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -126,21 +129,40 @@ fun CryptoDetailScreen(
 
             // Interval Selector
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                val intervals = listOf("3D", "1D", "4H", "1H", "15M", "5M", "1M")
+                val intervals = listOf(
+                    "1mo" to "1mo",
+                    "2w" to "2w",
+                    "1w" to "1w",
+                    "5d" to "5d",
+                    "3d" to "3d",
+                    "1d" to "1d",
+                    "12h" to "12h",
+                    "6h" to "6h",
+                    "4h" to "4h",
+                    "2h" to "2h",
+                    "1h" to "1h",
+                    "30m" to "30m",
+                    "15m" to "15m",
+                    "5m" to "5m",
+                    "1m" to "1m"
+                )
                 intervals.forEach { interval ->
-                    val isSelected = state.selectedInterval.uppercase() == interval
+                    val isSelected = state.selectedInterval == interval.second
                     Box(
                         modifier = Modifier
-                            .weight(1f)
+                            .width(42.dp)
                             .height(36.dp)
-                            .clickable { viewModel.loadChartData(interval.lowercase()) },
+                            .clickable { viewModel.loadChartData(interval.second) },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = interval,
+                            text = interval.first,
                             color = if (isSelected) Color.White else Color.Gray,
                             fontSize = 13.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
@@ -172,10 +194,10 @@ fun CryptoDetailScreen(
                         PriceChart(state, priceChartRef, volumeChartRef, stochChartRef)
                     }
                     Box(modifier = Modifier.weight(0.8f)) {
-                        VolumeChart(state, volumeChartRef)
+                        VolumeChart(state, priceChartRef, volumeChartRef)
                     }
                     Box(modifier = Modifier.weight(1f)) {
-                        StochRSIChart(state, stochChartRef)
+                        StochRSIChart(state, priceChartRef, stochChartRef)
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -211,6 +233,22 @@ private fun formatPriceForChart(value: Double): String {
     }
 }
 
+private fun String.isCalendarInterval(): Boolean {
+    return this in setOf("1d", "3d", "5d", "1w", "2w", "1mo")
+}
+
+private fun List<CandleData>.spansMultipleYears(): Boolean {
+    val first = firstOrNull()?.time ?: return false
+    val last = lastOrNull()?.time ?: return false
+    return last - first >= 365L * 24L * 60L * 60L * 1000L
+}
+
+private fun CryptoDetailState.viewportKey(): String {
+    val first = candles.firstOrNull()?.time ?: 0L
+    val last = candles.lastOrNull()?.time ?: 0L
+    return "$symbol-$selectedInterval-${candles.size}-$first-$last"
+}
+
 private fun formatVol(vol: String): String {
     val v = vol.toDoubleOrNull() ?: return vol
     return when {
@@ -229,6 +267,7 @@ fun PriceChart(
     stochChartRef: MutableState<LineChart?>
 ) {
     val stateRef = remember { mutableStateOf(state) }
+    val lastRenderedDataKey = remember { mutableStateOf<String?>(null) }
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -283,7 +322,7 @@ fun PriceChart(
                             val dy = kotlin.math.abs(event.y - downY)
                             
                             // If highlight is shown and we move, update it and BLOCK chart panning
-                            if ((dx > 10f || dy > 10f) && highlighted != null && highlighted.isNotEmpty()) {
+                            if (event.pointerCount == 1 && (dx > 10f || dy > 10f) && highlighted != null && highlighted.isNotEmpty()) {
                                 isDragEnabled = false // Lock chart motion
                                 parent.requestDisallowInterceptTouchEvent(true)
                                 
@@ -476,86 +515,86 @@ fun PriceChart(
         },
         update = { chart ->
             stateRef.value = state
-            val candleEntries = state.candles.mapIndexed { index, it ->
-                CandleEntry(index.toFloat(), it.high.toFloat(), it.low.toFloat(), it.open.toFloat(), it.close.toFloat())
+            val viewportKey = state.viewportKey()
+            val isNewDataset = lastRenderedDataKey.value != viewportKey
+
+            chart.xAxis.applyTimeAxis(state)
+
+            if (isNewDataset) {
+                val candleEntries = state.candles.mapIndexed { index, it ->
+                    CandleEntry(index.toFloat(), it.high.toFloat(), it.low.toFloat(), it.open.toFloat(), it.close.toFloat())
+                }
+                val combinedData = CombinedData()
+                if (state.bbUpper.isNotEmpty()) {
+                    val upperEntries = state.bbUpper.mapIndexed { index, it ->
+                        val offsetIndex = index + (state.candles.size - state.bbUpper.size)
+                        Entry(offsetIndex.toFloat(), it.second.toFloat())
+                    }
+                    val middleEntries = state.bbMiddle.mapIndexed { index, it ->
+                        val offsetIndex = index + (state.candles.size - state.bbMiddle.size)
+                        Entry(offsetIndex.toFloat(), it.second.toFloat())
+                    }
+                    val lowerEntries = state.bbLower.mapIndexed { index, it ->
+                        val offsetIndex = index + (state.candles.size - state.bbLower.size)
+                        Entry(offsetIndex.toFloat(), it.second.toFloat())
+                    }
+                    val bbColor = GraphicsColor.parseColor("#FF9800")
+                    val middleColor = GraphicsColor.parseColor("#E91E63")
+                    val areaEntries = state.bbUpper.mapIndexed { index, it ->
+                        val offsetIndex = index + (state.candles.size - state.bbUpper.size)
+                        val lower = state.bbLower.getOrNull(index)?.second ?: it.second
+                        CandleEntry(offsetIndex.toFloat(), it.second.toFloat(), lower.toFloat(), lower.toFloat(), it.second.toFloat())
+                    }
+                    val areaDs = CandleDataSet(areaEntries, "BBArea").apply {
+                        axisDependency = YAxis.AxisDependency.LEFT
+                        setDrawValues(false)
+                        shadowWidth = 0f
+                        barSpace = 0f
+                        val fillColor = GraphicsColor.argb(15, 255, 152, 0)
+                        decreasingColor = fillColor
+                        increasingColor = fillColor
+                        decreasingPaintStyle = Paint.Style.FILL
+                        increasingPaintStyle = Paint.Style.FILL
+                        isHighlightEnabled = false
+                        setDrawHorizontalHighlightIndicator(false)
+                        setDrawVerticalHighlightIndicator(false)
+                    }
+                    val candleDataSet = createCandleDataSet(candleEntries)
+                    val candleData = CandleData(candleDataSet)
+                    candleData.addDataSet(areaDs)
+                    combinedData.setData(candleData)
+                    val lineData = LineData()
+                    lineData.addDataSet(createBBLineDataSet(upperEntries, "Upper", bbColor))
+                    lineData.addDataSet(createBBLineDataSet(lowerEntries, "Lower", bbColor))
+                    lineData.addDataSet(createBBLineDataSet(middleEntries, "Middle", middleColor, 1.2f))
+                    combinedData.setData(lineData)
+                } else {
+                    combinedData.setData(CandleData(createCandleDataSet(candleEntries)))
+                }
+                chart.data = combinedData
+            } else if (state.candles.isNotEmpty()) {
+                updateLastCandleInPlace(chart, state)
             }
 
-            chart.xAxis.valueFormatter = object : ValueFormatter() {
-                val daySdf = SimpleDateFormat("MM/dd", Locale.getDefault())
-                val hourSdf = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-                
-                override fun getFormattedValue(value: Float): String {
-                    val idx = value.toInt().coerceIn(0, state.candles.size - 1)
-                    if (idx < 0 || idx >= state.candles.size) return ""
-                    val isDaily = state.selectedInterval.contains("d", ignoreCase = true)
-                    val sdf = if (isDaily) daySdf else hourSdf
-                    return sdf.format(Date(state.candles[idx].time))
-                }
+            chart.applySyncAndInitialZoom(state.candles, resetViewport = isNewDataset, onPositioned = {
+                syncSubCharts(chart, volumeChartRef.value, stochChartRef.value)
+            })
+            if (isNewDataset) {
+                lastRenderedDataKey.value = viewportKey
             }
-
-            val combinedData = CombinedData()
-            // ... BB calculation and setting data ...
-            if (state.bbUpper.isNotEmpty()) {
-                val upperEntries = state.bbUpper.mapIndexed { index, it ->
-                    val offsetIndex = index + (state.candles.size - state.bbUpper.size)
-                    Entry(offsetIndex.toFloat(), it.second.toFloat())
-                }
-                val middleEntries = state.bbMiddle.mapIndexed { index, it ->
-                    val offsetIndex = index + (state.candles.size - state.bbMiddle.size)
-                    Entry(offsetIndex.toFloat(), it.second.toFloat())
-                }
-                val lowerEntries = state.bbLower.mapIndexed { index, it ->
-                    val offsetIndex = index + (state.candles.size - state.bbLower.size)
-                    Entry(offsetIndex.toFloat(), it.second.toFloat())
-                }
-
-                val bbColor = GraphicsColor.parseColor("#FF9800")
-                val middleColor = GraphicsColor.parseColor("#E91E63")
-
-                val areaEntries = state.bbUpper.mapIndexed { index, it ->
-                    val offsetIndex = index + (state.candles.size - state.bbUpper.size)
-                    val lower = state.bbLower.getOrNull(index)?.second ?: it.second
-                    CandleEntry(offsetIndex.toFloat(), it.second.toFloat(), lower.toFloat(), lower.toFloat(), it.second.toFloat())
-                }
-                val areaDs = CandleDataSet(areaEntries, "BBArea").apply {
-                    axisDependency = YAxis.AxisDependency.LEFT
-                    setDrawValues(false)
-                    shadowWidth = 0f
-                    barSpace = 0f
-                    val fillColor = GraphicsColor.argb(15, 255, 152, 0)
-                    decreasingColor = fillColor
-                    increasingColor = fillColor
-                    decreasingPaintStyle = Paint.Style.FILL
-                    increasingPaintStyle = Paint.Style.FILL
-                    isHighlightEnabled = false // Fix: Indicator area shouldn't be selectable
-                    setDrawHorizontalHighlightIndicator(false)
-                    setDrawVerticalHighlightIndicator(false)
-                }
-
-                val candleDataSet = createCandleDataSet(candleEntries)
-                val candleData = CandleData(candleDataSet)
-                candleData.addDataSet(areaDs)
-                combinedData.setData(candleData)
-
-                val lineData = LineData()
-                lineData.addDataSet(createBBLineDataSet(upperEntries, "Upper", bbColor))
-                lineData.addDataSet(createBBLineDataSet(lowerEntries, "Lower", bbColor))
-                lineData.addDataSet(createBBLineDataSet(middleEntries, "Middle", middleColor, 1.2f))
-                combinedData.setData(lineData)
-            } else {
-                combinedData.setData(CandleData(createCandleDataSet(candleEntries)))
-            }
-
-            chart.data = combinedData
-            chart.applySyncAndInitialZoom(candleEntries)
         }
     )
 }
 
 // ─── VOLUME CHART ────────────────────────────────────────────────────────────
 @Composable
-fun VolumeChart(state: CryptoDetailState, chartRef: MutableState<BarChart?>) {
+fun VolumeChart(
+    state: CryptoDetailState,
+    priceChartRef: MutableState<CombinedChart?>,
+    chartRef: MutableState<BarChart?>
+) {
     val stateRef = remember { mutableStateOf(state) }
+    val lastRenderedDataKey = remember { mutableStateOf<String?>(null) }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
@@ -608,8 +647,10 @@ fun VolumeChart(state: CryptoDetailState, chartRef: MutableState<BarChart?>) {
                 }
             }.apply {
                 setupCommonChartParams()
+                setTouchEnabled(false)
                 isDragEnabled = false
-                setScaleEnabled(false)
+                setScaleEnabled(true)
+                setScaleYEnabled(false)
                 setPinchZoom(false)
                 axisLeft.apply {
                     setLabelCount(2, false)
@@ -621,27 +662,46 @@ fun VolumeChart(state: CryptoDetailState, chartRef: MutableState<BarChart?>) {
         },
         update = { chart ->
             stateRef.value = state
-            val entries = state.candles.mapIndexed { index, it ->
-                BarEntry(index.toFloat(), it.volume.toFloat())
-            }
-            val dataset = BarDataSet(entries, "Vol").apply {
-                setDrawValues(false)
-                highLightAlpha = 0 // Remove default block highlight
-                val colors = state.candles.map {
-                    if (it.close >= it.open) GraphicsColor.parseColor("#1ECB81") else GraphicsColor.parseColor("#F6465D")
+            val viewportKey = state.viewportKey()
+            val isNewDataset = lastRenderedDataKey.value != viewportKey
+
+            if (isNewDataset) {
+                val entries = state.candles.mapIndexed { index, it ->
+                    BarEntry(index.toFloat(), it.volume.toFloat())
                 }
-                setColors(colors)
+                val dataset = BarDataSet(entries, "Vol").apply {
+                    setDrawValues(false)
+                    highLightAlpha = 0
+                    val colors = state.candles.map {
+                        if (it.close >= it.open) GraphicsColor.parseColor("#1ECB81") else GraphicsColor.parseColor("#F6465D")
+                    }
+                    setColors(colors)
+                }
+                chart.data = BarData(dataset)
+            } else if (state.candles.isNotEmpty()) {
+                updateLastVolumeInPlace(chart, state)
             }
-            chart.data = BarData(dataset)
-            chart.applySyncAndInitialZoom(state.candles)
+
+            chart.xAxis.applyTimeAxis(state)
+            chart.xAxis.setDrawLabels(false)
+            chart.applySyncAndInitialZoom(state.candles, resetViewport = isNewDataset, skipPositioning = isNewDataset)
+            priceChartRef.value?.let { chart.syncViewportFrom(it) }
+            if (isNewDataset) {
+                lastRenderedDataKey.value = viewportKey
+            }
         }
     )
 }
 
 // ─── STOCHRSI CHART ──────────────────────────────────────────────────────────
 @Composable
-fun StochRSIChart(state: CryptoDetailState, chartRef: MutableState<LineChart?>) {
+fun StochRSIChart(
+    state: CryptoDetailState,
+    priceChartRef: MutableState<CombinedChart?>,
+    chartRef: MutableState<LineChart?>
+) {
     val stateRef = remember { mutableStateOf(state) }
+    val lastRenderedDataKey = remember { mutableStateOf<String?>(null) }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
@@ -711,8 +771,10 @@ fun StochRSIChart(state: CryptoDetailState, chartRef: MutableState<LineChart?>) 
                 }
             }.apply {
                 setupCommonChartParams()
+                setTouchEnabled(false)
                 isDragEnabled = false
-                setScaleEnabled(false)
+                setScaleEnabled(true)
+                setScaleYEnabled(false)
                 setPinchZoom(false)
                 axisLeft.apply {
                     axisMinimum = 0f
@@ -725,33 +787,61 @@ fun StochRSIChart(state: CryptoDetailState, chartRef: MutableState<LineChart?>) 
         },
         update = { chart ->
             stateRef.value = state
-            val lineData = LineData()
-            if (state.stochK.isNotEmpty()) {
-                val kEntries = state.stochK.map { Entry(it.first.toFloat(), it.second.toFloat()) }
-                val dEntries = state.stochD.map { Entry(it.first.toFloat(), it.second.toFloat()) }
-                lineData.addDataSet(createBBLineDataSet(kEntries, "K", GraphicsColor.parseColor("#FF9800"), 1f, highlight = true))
-                lineData.addDataSet(createBBLineDataSet(dEntries, "D", GraphicsColor.parseColor("#E91E63"), 1f, highlight = true))
+            val viewportKey = state.viewportKey()
+            val isNewDataset = lastRenderedDataKey.value != viewportKey
+
+            if (isNewDataset) {
+                val lineData = LineData()
+                if (state.stochK.isNotEmpty()) {
+                    val kEntries = state.stochK.map { Entry(it.first.toFloat(), it.second.toFloat()) }
+                    val dEntries = state.stochD.map { Entry(it.first.toFloat(), it.second.toFloat()) }
+                    lineData.addDataSet(createBBLineDataSet(kEntries, "K", GraphicsColor.parseColor("#FF9800"), 1f, highlight = true))
+                    lineData.addDataSet(createBBLineDataSet(dEntries, "D", GraphicsColor.parseColor("#E91E63"), 1f, highlight = true))
+                }
+                chart.data = lineData
+            } else if (state.stochK.isNotEmpty()) {
+                updateLastStochInPlace(chart, state)
             }
-            chart.data = lineData
-            chart.applySyncAndInitialZoom(state.candles)
+
+            chart.xAxis.applyTimeAxis(state)
+            chart.xAxis.setDrawLabels(false)
+            chart.applySyncAndInitialZoom(state.candles, resetViewport = isNewDataset, skipPositioning = isNewDataset)
+            priceChartRef.value?.let { chart.syncViewportFrom(it) }
+            if (isNewDataset) {
+                lastRenderedDataKey.value = viewportKey
+            }
         }
     )
 }
 
 // ─── SYNC HELPERS ─────────────────────────────────────────────────────────────
 private fun syncSubCharts(priceChart: CombinedChart, volumeChart: BarChart?, stochChart: LineChart?) {
-    val lowestX = priceChart.lowestVisibleX
-    val scaleX = priceChart.viewPortHandler.scaleX
-
     listOf(volumeChart, stochChart).forEach { sub ->
         sub ?: return@forEach
-        val vph = sub.viewPortHandler
-        if (vph.scaleX != scaleX) {
-            vph.setZoom(scaleX, vph.scaleY, 0f, 0f)
-        }
-        sub.moveViewToX(lowestX)
-        syncHighlights(priceChart, volumeChart, stochChart)
+        sub.syncViewportFrom(priceChart)
     }
+    syncHighlights(priceChart, volumeChart, stochChart)
+}
+
+private fun BarLineChartBase<*>.syncViewportFrom(source: BarLineChartBase<*>) {
+    xAxis.axisMinimum = source.xAxis.axisMinimum
+    xAxis.axisMaximum = source.xAxis.axisMaximum
+
+    val sourceValues = FloatArray(9)
+    source.viewPortHandler.matrixTouch.getValues(sourceValues)
+
+    val targetMatrix = Matrix(viewPortHandler.matrixTouch)
+    val targetValues = FloatArray(9)
+    targetMatrix.getValues(targetValues)
+    targetValues[Matrix.MSCALE_X] = sourceValues[Matrix.MSCALE_X]
+    targetValues[Matrix.MTRANS_X] = sourceValues[Matrix.MTRANS_X]
+    targetValues[Matrix.MSKEW_X] = 0f
+    targetValues[Matrix.MSKEW_Y] = 0f
+    targetValues[Matrix.MSCALE_Y] = 1f
+    targetValues[Matrix.MTRANS_Y] = 0f
+    targetMatrix.setValues(targetValues)
+
+    viewPortHandler.refresh(targetMatrix, this, true)
 }
 
 private fun syncHighlights(priceChart: CombinedChart, volumeChart: BarChart?, stochChart: LineChart?) {
@@ -767,15 +857,52 @@ private fun syncHighlights(priceChart: CombinedChart, volumeChart: BarChart?, st
 
 
 // ─── COMMON CHART SETUP ──────────────────────────────────────────────────────
+private fun XAxis.applyTimeAxis(state: CryptoDetailState) {
+    valueFormatter = object : ValueFormatter() {
+        private val daySdf = SimpleDateFormat("MM/dd", Locale.getDefault())
+        private val yearSdf = SimpleDateFormat("yyyy/MM", Locale.getDefault())
+        private val hourSdf = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
+
+        override fun getFormattedValue(value: Float): String {
+            if (state.candles.isEmpty()) return ""
+            val idx = value.toInt().coerceIn(0, state.candles.size - 1)
+            val sdf = when {
+                state.candles.spansMultipleYears() -> yearSdf
+                state.selectedInterval.isCalendarInterval() -> daySdf
+                else -> hourSdf
+            }
+            return sdf.format(Date(state.candles[idx].time))
+        }
+    }
+
+    val spansYears = state.candles.spansMultipleYears()
+    val isCalendar = state.selectedInterval.isCalendarInterval()
+    labelRotationAngle = when {
+        spansYears -> -30f
+        !isCalendar -> -18f
+        else -> 0f
+    }
+    textSize = if (spansYears) 9f else 10f
+    yOffset = if (labelRotationAngle == 0f) 4f else 8f
+    setLabelCount(
+        when {
+            spansYears -> 3
+            !isCalendar -> 3
+            else -> 4
+        },
+        false
+    )
+}
+
 private fun BarLineChartBase<*>.setupCommonChartParams() {
     description.isEnabled = false
     legend.isEnabled = false
     setTouchEnabled(true)
     isDragEnabled = true
     setScaleEnabled(true)
-    setPinchZoom(true)
+    setPinchZoom(false)
     setScaleXEnabled(true)
-    setScaleYEnabled(false)
+    setScaleYEnabled(true)
     setBackgroundColor(GraphicsColor.BLACK)
     setHighlightPerDragEnabled(true)
     setAutoScaleMinMaxEnabled(true)
@@ -828,14 +955,110 @@ private fun createBBLineDataSet(entries: List<Entry>, label: String, color: Int,
     }
 }
 
-// ─── INITIAL ZOOM / SCROLL ───────────────────────────────────────────────────
-private fun BarLineChartBase<*>.applySyncAndInitialZoom(data: List<*>) {
-    if (data.isNotEmpty() && viewPortHandler.scaleX <= 1f) {
-        setVisibleXRangeMaximum(100f)
-        moveViewToX((data.size - 1).toFloat())
+// ─── IN-PLACE UPDATE HELPERS ─────────────────────────────────────────────────
+private fun updateLastCandleInPlace(chart: CombinedChart, state: CryptoDetailState) {
+    val cd = chart.data as? CombinedData ?: return
+    val last = state.candles.lastOrNull() ?: return
+    val lastIdx = state.candles.size - 1
+    cd.getCandleData()?.dataSets?.forEach { ds ->
+        if (ds.entryCount > lastIdx) {
+            val e = ds.getEntryForIndex(lastIdx)
+            e.open = last.open.toFloat()
+            e.close = last.close.toFloat()
+            e.high = last.high.toFloat()
+            e.low = last.low.toFloat()
+        }
     }
-    invalidate()
+    val lineData = cd.getLineData()
+    if (lineData != null && state.bbUpper.isNotEmpty()) {
+        val bbSize = state.bbUpper.size
+        val bbLastIdx = bbSize - 1
+        val lastUpper = state.bbUpper.lastOrNull()?.second
+        val lastMiddle = state.bbMiddle.lastOrNull()?.second
+        val lastLower = state.bbLower.lastOrNull()?.second
+        for (i in 0 until lineData.dataSetCount) {
+            val ds = lineData.getDataSetByIndex(i)
+            if (ds.entryCount > bbLastIdx && bbLastIdx >= 0) {
+                val e = ds.getEntryForIndex(bbLastIdx)
+                when (ds.label) {
+                    "Upper" -> lastUpper?.let { e.y = it.toFloat() }
+                    "Middle" -> lastMiddle?.let { e.y = it.toFloat() }
+                    "Lower" -> lastLower?.let { e.y = it.toFloat() }
+                }
+            }
+        }
+    }
+    chart.invalidate()
 }
+
+private fun updateLastVolumeInPlace(chart: BarChart, state: CryptoDetailState) {
+    val bd = chart.data as? BarData ?: return
+    val last = state.candles.lastOrNull() ?: return
+    val lastIdx = state.candles.size - 1
+    bd.dataSets.forEach { ds ->
+        if (ds.entryCount > lastIdx) {
+            val e = ds.getEntryForIndex(lastIdx)
+            e.y = last.volume.toFloat()
+        }
+    }
+    chart.invalidate()
+}
+
+private fun updateLastStochInPlace(chart: LineChart, state: CryptoDetailState) {
+    val ld = chart.data as? LineData ?: return
+    val lastK = state.stochK.lastOrNull()
+    val lastD = state.stochD.lastOrNull()
+    if (lastK != null && ld.dataSets.size > 0) {
+        val ds = ld.getDataSetByIndex(0)
+        if (ds.entryCount > 0) {
+            val e = ds.getEntryForIndex(ds.entryCount - 1)
+            e.y = lastK.second.toFloat()
+        }
+    }
+    if (lastD != null && ld.dataSets.size > 1) {
+        val ds = ld.getDataSetByIndex(1)
+        if (ds.entryCount > 0) {
+            val e = ds.getEntryForIndex(ds.entryCount - 1)
+            e.y = lastD.second.toFloat()
+        }
+    }
+    chart.invalidate()
+}
+
+// ─── INITIAL ZOOM / SCROLL ───────────────────────────────────────────────────
+private var zoomAppliedForDataset = false
+
+private fun BarLineChartBase<*>.applySyncAndInitialZoom(
+    data: List<*>,
+    resetViewport: Boolean = false,
+    skipPositioning: Boolean = false,
+    onPositioned: (() -> Unit)? = null
+) {
+    if (data.isEmpty()) return
+    if (resetViewport) {
+        zoomAppliedForDataset = false
+        notifyDataSetChanged()
+        viewPortHandler.setMinimumScaleX(1f)
+        viewPortHandler.setMaximumScaleX(1_000_000f)
+        viewPortHandler.setMinimumScaleY(1f)
+        viewPortHandler.setMaximumScaleY(1_000_000f)
+        if (!skipPositioning) {
+            zoomAppliedForDataset = true
+            post {
+                val scaleX = data.size.toFloat() / INITIAL_VISIBLE_CANDLES
+                val lastX = (data.size - 1).toFloat().coerceAtLeast(0f)
+                val pts = floatArrayOf(lastX, 0f)
+                getTransformer(YAxis.AxisDependency.LEFT).pointValuesToPixel(pts)
+                zoom(scaleX, 1f, pts[0], 0f)
+                onPositioned?.invoke()
+            }
+        } else {
+            invalidate()
+        }
+    }
+}
+
+private const val INITIAL_VISIBLE_CANDLES = 100f
 
 // ─── FIX 2 & 3: OKX MARKER ───────────────────────────────────────────────────
 /**
@@ -857,6 +1080,7 @@ class OKXChartMarker(
     private val tvVolume: TextView = findViewById(R.id.tvVolume)
 
     private val daySdf = SimpleDateFormat("MM/dd", Locale.getDefault())
+    private val yearSdf = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
     private val hourSdf = SimpleDateFormat("MM/dd, HH:mm", Locale.getDefault())
 
     private var lastHighlight: Highlight? = null
@@ -875,8 +1099,12 @@ class OKXChartMarker(
                 else
                     android.graphics.Color.parseColor("#F6465D")
 
-                val isDaily = state.selectedInterval.contains("d", ignoreCase = true)
-                val sdf = if (isDaily) daySdf else hourSdf
+                val isDaily = state.selectedInterval.isCalendarInterval()
+                val sdf = when {
+                    state.candles.spansMultipleYears() -> yearSdf
+                    isDaily -> daySdf
+                    else -> hourSdf
+                }
                 tvTime.text = sdf.format(Date(candle.time))
                 tvOpen.text = formatPriceForChart(candle.open)
                 tvHigh.text = formatPriceForChart(candle.high)

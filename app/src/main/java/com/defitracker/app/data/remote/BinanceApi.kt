@@ -20,6 +20,7 @@ interface BinanceApi {
     suspend fun getKlines(
         @Query("symbol") symbol: String,
         @Query("interval") interval: String,
-        @Query("limit") limit: Int = 500
+        @Query("limit") limit: Int = 1000,
+        @Query("endTime") endTime: Long? = null
     ): List<List<Any>>
 }

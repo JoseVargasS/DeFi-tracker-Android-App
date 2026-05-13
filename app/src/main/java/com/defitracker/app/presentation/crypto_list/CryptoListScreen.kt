@@ -50,6 +50,8 @@ fun CryptoListScreen(
         }.take(10)
     }
 
+    val showSymbolError = state.availableSymbols.isEmpty() && state.symbolsError.isNotEmpty()
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
@@ -130,24 +132,36 @@ fun CryptoListScreen(
                                 shape = RoundedCornerShape(8.dp),
                                 tonalElevation = 2.dp
                             ) {
-                                LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                                    items(
-                                        items = filteredSymbols,
-                                        key = { (symbol, base) -> "$symbol-$base" }
-                                    ) { (symbol, base) ->
-                                        ListItem(
-                                            headlineContent = { Text(symbol, color = Color.White, fontSize = 14.sp) },
-                                            supportingContent = { Text(base, color = Color.Gray, fontSize = 11.sp) },
-                                            modifier = Modifier
-                                                .clickable {
-                                                    viewModel.onAddPair(symbol, base, "Binance")
-                                                    isSearchMode = false
-                                                    searchQuery = ""
-                                                }
-                                                .background(Color.Transparent),
-                                            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                                        )
-                                        Divider(color = Color.Gray.copy(alpha = 0.1f))
+                                if (showSymbolError) {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(state.symbolsError, color = Color.Gray, fontSize = 13.sp)
+                                        TextButton(onClick = { viewModel.retryLoadSymbols() }) {
+                                            Text("Retry", color = Color(0xFF1ECB81), fontSize = 13.sp)
+                                        }
+                                    }
+                                } else {
+                                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                                        items(
+                                            items = filteredSymbols,
+                                            key = { (symbol, base) -> "$symbol-$base" }
+                                        ) { (symbol, base) ->
+                                            ListItem(
+                                                headlineContent = { Text(symbol, color = Color.White, fontSize = 14.sp) },
+                                                supportingContent = { Text(base, color = Color.Gray, fontSize = 11.sp) },
+                                                modifier = Modifier
+                                                    .clickable {
+                                                        viewModel.onAddPair(symbol, base, "Binance")
+                                                        isSearchMode = false
+                                                        searchQuery = ""
+                                                    }
+                                                    .background(Color.Transparent),
+                                                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                                            )
+                                            Divider(color = Color.Gray.copy(alpha = 0.1f))
+                                        }
                                     }
                                 }
                             }

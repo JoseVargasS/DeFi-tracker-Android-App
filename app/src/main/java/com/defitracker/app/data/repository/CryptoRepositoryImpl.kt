@@ -82,7 +82,29 @@ class CryptoRepositoryImpl @Inject constructor(
 
     override suspend fun getKlines(symbol: String, interval: String, source: String): List<List<Any>> {
         return try {
-            binanceApi.getKlines(symbol, interval)
+            val allKlines = mutableListOf<List<Any>>()
+            var endTime: Long? = null
+            var pagesFetched = 0
+
+            while (pagesFetched < CHART_KLINE_PAGE_COUNT) {
+                val page = binanceApi.getKlines(
+                    symbol = symbol,
+                    interval = interval,
+                    limit = CHART_KLINE_PAGE_SIZE,
+                    endTime = endTime
+                )
+                if (page.isEmpty()) break
+
+                allKlines.addAll(0, page)
+                val oldestOpenTime = page.firstOrNull()?.getOrNull(0)?.toString()?.toDoubleOrNull()?.toLong()
+                    ?: break
+                endTime = oldestOpenTime - 1
+                pagesFetched++
+
+                if (page.size < CHART_KLINE_PAGE_SIZE) break
+            }
+
+            allKlines
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -257,5 +279,10 @@ class CryptoRepositoryImpl @Inject constructor(
     }
 
     private data class CoinStatsChain(val id: String, val name: String)
+
+    private companion object {
+        const val CHART_KLINE_PAGE_SIZE = 1000
+        const val CHART_KLINE_PAGE_COUNT = 3
+    }
 }
 
