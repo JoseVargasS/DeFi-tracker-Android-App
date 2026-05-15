@@ -239,7 +239,8 @@ class CryptoRepositoryImpl @Inject constructor(
                 quoteVolume = stats.quoteVolume,
                 isPositive = (stats.priceChangePercent.toDoubleOrNull() ?: 0.0) >= 0
             )
-        } catch (e: Exception) {
+        } catch (exception: Exception) {
+            logNonFatal("24h stats request failed for $symbol, falling back to ticker price", exception)
             val fallbackPrice = binanceApi.getPrice(symbol).price.toDoubleOrNull() ?: 0.0
             PairDetail(
                 symbol = symbol,
