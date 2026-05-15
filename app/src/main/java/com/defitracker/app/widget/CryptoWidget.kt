@@ -29,7 +29,7 @@ private val WidgetGreen = fixedColorProvider(Color(0xFF0ECB81))
 private val WidgetRed = fixedColorProvider(Color(0xFFF6465D))
 
 private fun fixedColorProvider(color: Color): ColorProvider = object : ColorProvider {
-    override fun getColor(context: Context): Color = color
+    override fun getColor(context: Context): Color = context.applicationContext.let { color }
 }
 
 class CryptoWidget : GlanceAppWidget() {

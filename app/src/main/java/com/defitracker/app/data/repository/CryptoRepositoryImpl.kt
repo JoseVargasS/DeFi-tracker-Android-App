@@ -63,19 +63,10 @@ class CryptoRepositoryImpl @Inject constructor(
 
     override suspend fun getPairDetail(symbol: String, source: String): PairDetail {
         return try {
-            val stats = binanceApi.get24hStats(symbol)
-            val priceDouble = stats.lastPrice?.toDoubleOrNull() ?: 0.0
-            PairDetail(
-                symbol = symbol,
-                price = formatPrice(priceDouble),
-                priceChange = stats.priceChange,
-                priceChangePercent = stats.priceChangePercent,
-                highPrice = stats.highPrice,
-                lowPrice = stats.lowPrice,
-                volume = stats.volume,
-                quoteVolume = stats.quoteVolume,
-                isPositive = (stats.priceChangePercent.toDoubleOrNull() ?: 0.0) >= 0
-            )
+            when (source) {
+                "Binance" -> getBinancePairDetail(symbol)
+                else -> getBinancePairDetail(symbol)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -85,29 +76,10 @@ class CryptoRepositoryImpl @Inject constructor(
 
     override suspend fun getKlines(symbol: String, interval: String, source: String): List<List<Any>> {
         return try {
-            val allKlines = mutableListOf<List<Any>>()
-            var endTime: Long? = null
-            var pagesFetched = 0
-
-            while (pagesFetched < CHART_KLINE_PAGE_COUNT) {
-                val page = binanceApi.getKlines(
-                    symbol = symbol,
-                    interval = interval,
-                    limit = CHART_KLINE_PAGE_SIZE,
-                    endTime = endTime
-                )
-                if (page.isEmpty()) break
-
-                allKlines.addAll(0, page)
-                val oldestOpenTime = page.firstOrNull()?.getOrNull(0)?.toString()?.toDoubleOrNull()?.toLong()
-                    ?: break
-                endTime = oldestOpenTime - 1
-                pagesFetched++
-
-                if (page.size < CHART_KLINE_PAGE_SIZE) break
+            when (source) {
+                "Binance" -> getBinanceKlines(symbol, interval)
+                else -> getBinanceKlines(symbol, interval)
             }
-
-            allKlines
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -250,6 +222,63 @@ class CryptoRepositoryImpl @Inject constructor(
             decimals = null,
             network = networkName
         )
+    }
+
+    private suspend fun getBinancePairDetail(symbol: String): PairDetail {
+        return try {
+            val stats = binanceApi.get24hStats(symbol)
+            val priceDouble = stats.lastPrice?.toDoubleOrNull() ?: 0.0
+            PairDetail(
+                symbol = symbol,
+                price = formatPrice(priceDouble),
+                priceChange = stats.priceChange,
+                priceChangePercent = stats.priceChangePercent,
+                highPrice = stats.highPrice,
+                lowPrice = stats.lowPrice,
+                volume = stats.volume,
+                quoteVolume = stats.quoteVolume,
+                isPositive = (stats.priceChangePercent.toDoubleOrNull() ?: 0.0) >= 0
+            )
+        } catch (e: Exception) {
+            val fallbackPrice = binanceApi.getPrice(symbol).price.toDoubleOrNull() ?: 0.0
+            PairDetail(
+                symbol = symbol,
+                price = formatPrice(fallbackPrice),
+                priceChange = "0.00",
+                priceChangePercent = "0.00",
+                highPrice = "0.00",
+                lowPrice = "0.00",
+                volume = "0.00",
+                quoteVolume = "0.00",
+                isPositive = true
+            )
+        }
+    }
+
+    private suspend fun getBinanceKlines(symbol: String, interval: String): List<List<Any>> {
+        val allKlines = mutableListOf<List<Any>>()
+        var endTime: Long? = null
+        var pagesFetched = 0
+
+        while (pagesFetched < CHART_KLINE_PAGE_COUNT) {
+            val page = binanceApi.getKlines(
+                symbol = symbol,
+                interval = interval,
+                limit = CHART_KLINE_PAGE_SIZE,
+                endTime = endTime
+            )
+            if (page.isEmpty()) break
+
+            allKlines.addAll(0, page)
+            val oldestOpenTime = page.firstOrNull()?.getOrNull(0)?.toString()?.toDoubleOrNull()?.toLong()
+                ?: break
+            endTime = oldestOpenTime - 1
+            pagesFetched++
+
+            if (page.size < CHART_KLINE_PAGE_SIZE) break
+        }
+
+        return allKlines
     }
 
     private fun formatPrice(price: Double): String {
