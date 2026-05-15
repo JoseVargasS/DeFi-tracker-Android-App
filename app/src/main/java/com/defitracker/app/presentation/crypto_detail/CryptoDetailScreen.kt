@@ -104,7 +104,7 @@ fun CryptoDetailScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = "≈$${String.format(Locale.US, "%.2f", detail.price.toDoubleOrNull() ?: 0.0)}", color = Color.Gray, fontSize = 14.sp)
+                            Text(text = "~$${String.format(Locale.US, "%.2f", detail.price.toDoubleOrNull() ?: 0.0)}", color = Color.Gray, fontSize = 14.sp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${if (detail.isPositive) "+" else ""}${detail.priceChangePercent}%",

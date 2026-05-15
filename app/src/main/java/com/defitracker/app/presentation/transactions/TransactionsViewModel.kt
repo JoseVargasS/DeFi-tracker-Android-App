@@ -39,9 +39,21 @@ class TransactionsViewModel @Inject constructor(
     private fun getSavedWallets() {
         repository.getSavedWallets()
             .onEach { wallets ->
-                _state.value = _state.value.copy(wallets = wallets)
-                if (wallets.isNotEmpty() && _state.value.selectedAddress.isEmpty()) {
-                    onAddressSelected(wallets.first().address)
+                val selectedAddress = _state.value.selectedAddress
+                val nextSelectedAddress = when {
+                    wallets.isEmpty() -> ""
+                    selectedAddress.isBlank() -> wallets.first().address
+                    wallets.any { it.address == selectedAddress } -> selectedAddress
+                    else -> wallets.first().address
+                }
+
+                _state.value = _state.value.copy(
+                    wallets = wallets,
+                    selectedAddress = nextSelectedAddress
+                )
+
+                if (nextSelectedAddress.isNotBlank() && nextSelectedAddress != selectedAddress) {
+                    fetchTransactions(nextSelectedAddress)
                 }
             }
             .launchIn(viewModelScope)

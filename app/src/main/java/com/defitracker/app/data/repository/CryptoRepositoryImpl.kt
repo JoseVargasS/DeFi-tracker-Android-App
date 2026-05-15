@@ -1,5 +1,6 @@
 package com.defitracker.app.data.repository
 
+import com.defitracker.app.core.Constants
 import com.defitracker.app.data.local.TrackedPairDao
 import com.defitracker.app.data.local.TrackedPairEntity
 import com.defitracker.app.data.local.WalletDao
@@ -141,26 +142,16 @@ class CryptoRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getWalletBalances(address: String): Map<String, List<CoinStatsBalanceDto>> = coroutineScope {
-        val chains = listOf(
-            "ethereum" to "Ether",
-            "base-wallet" to "Base",
-            "binancesmartchain" to "BSC",
-            "solana" to "Solana",
-            "optimism" to "Optimism",
-            "arbitrum" to "Arbitrum",
-            "polygon" to "Polygon"
-        )
-
         val results = linkedMapOf<String, List<CoinStatsBalanceDto>>()
 
-        chains.forEachIndexed { index, (chainId, chainName) ->
+        walletBalanceChains.forEachIndexed { index, chain ->
             try {
                 if (index > 0) delay(500)
 
                 val balances = coinStatsApi.getWalletBalance(
                     address,
-                    chainId,
-                    com.defitracker.app.core.Constants.COINSTATS_API_KEY
+                    chain.id,
+                    Constants.COINSTATS_API_KEY
                 )
 
                 val filtered = balances.filter { balance ->
@@ -168,7 +159,7 @@ class CryptoRepositoryImpl @Inject constructor(
                 }
 
                 if (filtered.isNotEmpty()) {
-                    results[chainName] = filtered
+                    results[chain.name] = filtered
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -189,27 +180,16 @@ class CryptoRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getWalletTransactions(address: String): List<EtherscanTransactionDto> = coroutineScope {
-        val apiKey = com.defitracker.app.core.Constants.COINSTATS_API_KEY
-        val chains = listOf(
-            CoinStatsChain("ethereum", "Ethereum"),
-            CoinStatsChain("base-wallet", "Base"),
-            CoinStatsChain("binancesmartchain", "BSC"),
-            CoinStatsChain("polygon", "Polygon"),
-            CoinStatsChain("arbitrum", "Arbitrum"),
-            CoinStatsChain("optimism", "Optimism"),
-            CoinStatsChain("solana", "Solana")
-        )
-
         val allTransactions = mutableListOf<EtherscanTransactionDto>()
 
-        chains.forEachIndexed { index, chain ->
+        transactionChains.forEachIndexed { index, chain ->
             try {
                 if (index > 0) delay(350)
 
                 val transactions = coinStatsApi.getWalletTransactions(
                     address = address,
                     chainId = chain.id,
-                    apiKey = apiKey
+                    apiKey = Constants.COINSTATS_API_KEY
                 ).result
                     .filterNot { it.type.equals("Fill", ignoreCase = true) }
                     .mapNotNull { it.toTransactionDto(address, chain.name) }
@@ -283,6 +263,26 @@ class CryptoRepositoryImpl @Inject constructor(
     private companion object {
         const val CHART_KLINE_PAGE_SIZE = 1000
         const val CHART_KLINE_PAGE_COUNT = 3
+
+        val walletBalanceChains = listOf(
+            CoinStatsChain("ethereum", "Ether"),
+            CoinStatsChain("base-wallet", "Base"),
+            CoinStatsChain("binancesmartchain", "BSC"),
+            CoinStatsChain("solana", "Solana"),
+            CoinStatsChain("optimism", "Optimism"),
+            CoinStatsChain("arbitrum", "Arbitrum"),
+            CoinStatsChain("polygon", "Polygon")
+        )
+
+        val transactionChains = listOf(
+            CoinStatsChain("ethereum", "Ethereum"),
+            CoinStatsChain("base-wallet", "Base"),
+            CoinStatsChain("binancesmartchain", "BSC"),
+            CoinStatsChain("polygon", "Polygon"),
+            CoinStatsChain("arbitrum", "Arbitrum"),
+            CoinStatsChain("optimism", "Optimism"),
+            CoinStatsChain("solana", "Solana")
+        )
     }
 }
 

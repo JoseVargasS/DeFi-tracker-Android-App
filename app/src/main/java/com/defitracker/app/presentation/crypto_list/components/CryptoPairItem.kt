@@ -95,7 +95,7 @@ fun CryptoPairItem(
                     )
                 }
                 Text(
-                    text = pair.baseAsset,
+                    text = pair.symbol,
                     fontSize = 12.sp,
                     color = Color(0xFFAAAAAA),
                     fontWeight = FontWeight.Medium

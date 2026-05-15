@@ -85,13 +85,13 @@ class CryptoWidget : GlanceAppWidget() {
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
                 Text(
-                    text = "↻",
+                    text = "Refresh",
                     modifier = GlanceModifier
                         .padding(4.dp)
                         .clickable(actionRunCallback<RefreshActionCallback>()),
                     style = TextStyle(
                         color = WidgetGreen,
-                        fontSize = 20.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )
