@@ -1,6 +1,7 @@
 package com.defitracker.app.presentation.crypto_list
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.glance.appwidget.updateAll
@@ -26,6 +27,10 @@ class CryptoListViewModel @Inject constructor(
     private val repository: CryptoRepository,
     application: Application
 ) : AndroidViewModel(application) {
+
+    private fun logWidgetUpdateFailure(throwable: Throwable) {
+        Log.w(TAG, "Widget update failed", throwable)
+    }
 
     private val _state = mutableStateOf(CryptoListState())
     val state: State<CryptoListState> = _state
@@ -122,7 +127,7 @@ class CryptoListViewModel @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            e.printStackTrace()
+            logWidgetUpdateFailure(e)
         }
     }
 
@@ -144,6 +149,7 @@ class CryptoListViewModel @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "CryptoListVM"
         const val PRICE_REFRESH_MS = 5_000L
         const val WIDGET_REFRESH_TICKS = 12
     }

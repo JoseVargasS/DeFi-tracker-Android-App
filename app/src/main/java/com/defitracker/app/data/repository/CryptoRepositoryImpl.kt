@@ -1,5 +1,6 @@
 package com.defitracker.app.data.repository
 
+import android.util.Log
 import com.defitracker.app.core.Constants
 import com.defitracker.app.data.local.TrackedPairDao
 import com.defitracker.app.data.local.TrackedPairEntity
@@ -30,6 +31,10 @@ class CryptoRepositoryImpl @Inject constructor(
     private val walletDao: WalletDao
 ) : CryptoRepository {
 
+    private fun logNonFatal(context: String, throwable: Throwable) {
+        Log.w(TAG, context, throwable)
+    }
+
     private var cachedSymbols: List<Pair<String, String>> = emptyList()
 
     override fun getTrackedPairs(): Flow<List<CryptoPair>> {
@@ -46,9 +51,6 @@ class CryptoRepositoryImpl @Inject constructor(
                 )
             }
         }
-    }
-
-    override suspend fun refreshTrackedPairs() {
     }
 
     override suspend fun addTrackedPair(symbol: String, baseAsset: String, source: String) {
@@ -170,9 +172,9 @@ class CryptoRepositoryImpl @Inject constructor(
                 if (e.code() == 429) {
                     throw IllegalStateException("CoinStats rate limit reached. Try again later.")
                 }
-                e.printStackTrace()
+                logNonFatal("Wallet balances request failed for ${chain.name}", e)
             } catch (e: Exception) {
-                e.printStackTrace()
+                logNonFatal("Unexpected wallet balances failure for ${chain.name}", e)
             }
         }
 
@@ -204,9 +206,9 @@ class CryptoRepositoryImpl @Inject constructor(
                 if (e.code() == 429) {
                     throw IllegalStateException("CoinStats rate limit reached. Try again later.")
                 }
-                e.printStackTrace()
+                logNonFatal("Wallet transactions request failed for ${chain.name}", e)
             } catch (e: Exception) {
-                e.printStackTrace()
+                logNonFatal("Unexpected wallet transactions failure for ${chain.name}", e)
             }
         }
 
@@ -261,6 +263,7 @@ class CryptoRepositoryImpl @Inject constructor(
     private data class CoinStatsChain(val id: String, val name: String)
 
     private companion object {
+        const val TAG = "CryptoRepository"
         const val CHART_KLINE_PAGE_SIZE = 1000
         const val CHART_KLINE_PAGE_COUNT = 3
 

@@ -14,6 +14,4 @@ interface TrackedPairDao {
     @Query("DELETE FROM tracked_pairs WHERE symbol = :symbol")
     suspend fun deleteTrackedPairBySymbol(symbol: String)
 
-    @Query("SELECT EXISTS(SELECT 1 FROM tracked_pairs WHERE symbol = :symbol)")
-    suspend fun isPairTracked(symbol: String): Boolean
 }

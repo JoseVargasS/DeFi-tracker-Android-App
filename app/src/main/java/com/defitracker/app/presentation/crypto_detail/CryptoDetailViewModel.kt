@@ -1,5 +1,6 @@
 package com.defitracker.app.presentation.crypto_detail
 
+import android.util.Log
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.SavedStateHandle
@@ -22,6 +23,10 @@ class CryptoDetailViewModel @Inject constructor(
     private val repository: CryptoRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    private fun logNonFatal(context: String, throwable: Throwable) {
+        Log.w(TAG, context, throwable)
+    }
 
     private val _state = mutableStateOf(CryptoDetailState())
     val state: State<CryptoDetailState> = _state
@@ -133,7 +138,7 @@ class CryptoDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                e.printStackTrace()
+                logNonFatal("Chart data load failed for $symbol/$normalizedInterval", e)
                 _state.value = state.value.copy(isLoading = false, error = e.message ?: "Error")
             }
         }
@@ -163,7 +168,7 @@ class CryptoDetailViewModel @Inject constructor(
 
         val stochK = mutableListOf<Pair<Long, Double>>()
         val stochD = mutableListOf<Pair<Long, Double>>()
-        val rsiValues = calculateRSI(this, STOCH_RSI_PERIOD)
+        val rsiValues = calculateRSI(this)
 
         if (rsiValues.size >= STOCH_RSI_PERIOD) {
             val stochRSI = mutableListOf<Double>()
@@ -180,8 +185,8 @@ class CryptoDetailViewModel @Inject constructor(
                 }
             }
 
-            val smoothK = calculateSMA(stochRSI, STOCH_SMOOTH_PERIOD)
-            val smoothD = calculateSMA(smoothK, STOCH_SMOOTH_PERIOD)
+            val smoothK = calculateSMA(stochRSI)
+            val smoothD = calculateSMA(smoothK)
 
             for (i in smoothK.indices) {
                 val candleIndex = i + (size - smoothK.size)
@@ -202,8 +207,9 @@ class CryptoDetailViewModel @Inject constructor(
         )
     }
 
-    private fun calculateRSI(candles: List<CandleData>, period: Int): List<Double> {
+    private fun calculateRSI(candles: List<CandleData>): List<Double> {
         val rsi = mutableListOf<Double>()
+        val period = STOCH_RSI_PERIOD
         if (candles.size < period) return emptyList()
         
         var avgGain = 0.0
@@ -234,7 +240,8 @@ class CryptoDetailViewModel @Inject constructor(
         return padding + rsi
     }
 
-    private fun calculateSMA(values: List<Double>, period: Int): List<Double> {
+    private fun calculateSMA(values: List<Double>): List<Double> {
+        val period = STOCH_SMOOTH_PERIOD
         val sma = mutableListOf<Double>()
         for (i in values.indices) {
             if (i >= period - 1) {
@@ -278,6 +285,7 @@ class CryptoDetailViewModel @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "CryptoDetailVM"
         const val DETAIL_REFRESH_MS = 5_000L
         const val DEFAULT_CHART_INTERVAL = "12h"
         const val STOCH_RSI_PERIOD = 14

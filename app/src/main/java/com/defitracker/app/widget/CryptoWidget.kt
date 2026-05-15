@@ -23,10 +23,14 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
-private val WidgetDarkGray = ColorProvider(Color(0xFF16171A))
-private val WidgetWhite = ColorProvider(Color(0xFFFFFFFF))
-private val WidgetGreen = ColorProvider(Color(0xFF0ECB81))
-private val WidgetRed = ColorProvider(Color(0xFFF6465D))
+private val WidgetDarkGray = fixedColorProvider(Color(0xFF16171A))
+private val WidgetWhite = fixedColorProvider(Color(0xFFFFFFFF))
+private val WidgetGreen = fixedColorProvider(Color(0xFF0ECB81))
+private val WidgetRed = fixedColorProvider(Color(0xFFF6465D))
+
+private fun fixedColorProvider(color: Color): ColorProvider = object : ColorProvider {
+    override fun getColor(context: Context): Color = color
+}
 
 class CryptoWidget : GlanceAppWidget() {
 

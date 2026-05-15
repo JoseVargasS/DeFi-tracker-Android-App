@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.Flow
 
 interface CryptoRepository {
     fun getTrackedPairs(): Flow<List<CryptoPair>>
-    suspend fun refreshTrackedPairs()
     suspend fun addTrackedPair(symbol: String, baseAsset: String, source: String)
     suspend fun removeTrackedPair(symbol: String)
     suspend fun getPairDetail(symbol: String, source: String): PairDetail

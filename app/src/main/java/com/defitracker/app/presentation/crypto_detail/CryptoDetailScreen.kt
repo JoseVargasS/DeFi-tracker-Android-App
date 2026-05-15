@@ -652,7 +652,7 @@ fun VolumeChart(
                 setTouchEnabled(false)
                 isDragEnabled = false
                 setScaleEnabled(true)
-                setScaleYEnabled(false)
+                isScaleYEnabled = false
                 setPinchZoom(false)
                 axisLeft.apply {
                     setLabelCount(2, false)
@@ -776,7 +776,7 @@ fun StochRSIChart(
                 setTouchEnabled(false)
                 isDragEnabled = false
                 setScaleEnabled(true)
-                setScaleYEnabled(false)
+                isScaleYEnabled = false
                 setPinchZoom(false)
                 axisLeft.apply {
                     axisMinimum = 0f
@@ -903,11 +903,11 @@ private fun BarLineChartBase<*>.setupCommonChartParams() {
     isDragEnabled = true
     setScaleEnabled(true)
     setPinchZoom(false)
-    setScaleXEnabled(true)
-    setScaleYEnabled(true)
+    isScaleXEnabled = true
+    isScaleYEnabled = true
     setBackgroundColor(GraphicsColor.BLACK)
-    setHighlightPerDragEnabled(true)
-    setAutoScaleMinMaxEnabled(true)
+    isHighlightPerDragEnabled = true
+    isAutoScaleMinMaxEnabled = true
     xAxis.apply {
         position = XAxis.XAxisPosition.BOTTOM
         textColor = "#ADB1B8".toColorInt()
@@ -962,7 +962,7 @@ private fun updateLastCandleInPlace(chart: CombinedChart, state: CryptoDetailSta
     val cd = chart.data ?: return
     val last = state.candles.lastOrNull() ?: return
     val lastIdx = state.candles.size - 1
-    cd.getCandleData()?.dataSets?.forEach { ds ->
+    cd.candleData?.dataSets?.forEach { ds ->
         if (ds.entryCount > lastIdx) {
             val e = ds.getEntryForIndex(lastIdx)
             e.open = last.open.toFloat()
@@ -971,7 +971,7 @@ private fun updateLastCandleInPlace(chart: CombinedChart, state: CryptoDetailSta
             e.low = last.low.toFloat()
         }
     }
-    val lineData = cd.getLineData()
+    val lineData = cd.lineData
     if (lineData != null && state.bbUpper.isNotEmpty()) {
         val bbSize = state.bbUpper.size
         val bbLastIdx = bbSize - 1
@@ -1089,7 +1089,7 @@ class OKXChartMarker(
     private val hourSdf = SimpleDateFormat("MM/dd, HH:mm", Locale.getDefault())
 
     private var lastHighlight: Highlight? = null
-    override fun refreshContent(e: com.github.mikephil.charting.data.Entry?, highlight: Highlight?) {
+    override fun refreshContent(e: Entry?, highlight: Highlight?) {
         lastHighlight = highlight
         e?.let {
             val state = stateProvider()
@@ -1100,9 +1100,9 @@ class OKXChartMarker(
                 val changePct = if (candle.open != 0.0) change / candle.open * 100 else 0.0
                 val isUp = change >= 0
                 val changeColor = if (isUp)
-                    android.graphics.Color.parseColor("#1ECB81")
+                    GraphicsColor.parseColor("#1ECB81")
                 else
-                    android.graphics.Color.parseColor("#F6465D")
+                    GraphicsColor.parseColor("#F6465D")
 
                 val isDaily = state.selectedInterval.isCalendarInterval()
                 val sdf = when {
