@@ -1051,7 +1051,9 @@ private fun BarLineChartBase<*>.applySyncAndInitialZoom(
                 val lastX = (data.size - 1).toFloat().coerceAtLeast(0f)
                 val pts = floatArrayOf(lastX, 0f)
                 getTransformer(YAxis.AxisDependency.LEFT).pointValuesToPixel(pts)
-                zoom(scaleX, 1f, pts[0], 0f)
+                val matrix = Matrix()
+                matrix.postScale(scaleX, 1f, pts[0], 0f)
+                viewPortHandler.refresh(matrix, this, true)
                 onPositioned?.invoke()
             }
         } else {
