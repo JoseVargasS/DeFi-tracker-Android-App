@@ -16,6 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 @HiltViewModel
@@ -71,8 +72,8 @@ class CryptoDetailViewModel @Inject constructor(
                             val lastCandle = updatedCandles.last()
                             val newLastCandle = lastCandle.copy(
                                 close = currentPrice,
-                                high = Math.max(lastCandle.high, currentPrice),
-                                low = Math.min(lastCandle.low, currentPrice)
+                                high = currentPrice.coerceAtLeast(lastCandle.high),
+                                low = currentPrice.coerceAtMost(lastCandle.low)
                             )
                             updatedCandles[updatedCandles.size - 1] = newLastCandle
                         }
@@ -157,7 +158,7 @@ class CryptoDetailViewModel @Inject constructor(
             if (i >= period - 1) {
                 val slice = subList(i - period + 1, i + 1)
                 val sma = slice.sumOf { it.close } / period
-                val variance = slice.sumOf { Math.pow(it.close - sma, 2.0) } / period
+                val variance = slice.sumOf { (it.close - sma).pow(2.0) } / period
                 val stdDev = sqrt(variance)
 
                 bbMiddle.add(i.toLong() to sma)

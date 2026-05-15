@@ -440,7 +440,7 @@ fun PriceChart(
                     
                     val twPrice = tagTextPaint.measureText(priceText)
                     val twPct = tagTextPaint.measureText(pctText)
-                    val maxWidth = Math.max(twPrice, twPct)
+                    val maxWidth = maxOf(twPrice, twPct)
                     val thY = tagTextPaint.textSize
                     val lineHeight = thY + 8f 
                     
@@ -1010,7 +1010,7 @@ private fun updateLastStochInPlace(chart: LineChart, state: CryptoDetailState) {
     val ld = chart.data ?: return
     val lastK = state.stochK.lastOrNull()
     val lastD = state.stochD.lastOrNull()
-    if (lastK != null && ld.dataSets.size > 0) {
+    if (lastK != null && ld.dataSets.isNotEmpty()) {
         val ds = ld.getDataSetByIndex(0)
         if (ds.entryCount > 0) {
             val e = ds.getEntryForIndex(ds.entryCount - 1)
