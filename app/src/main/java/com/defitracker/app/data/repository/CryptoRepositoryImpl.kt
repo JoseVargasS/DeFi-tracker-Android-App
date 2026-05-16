@@ -10,6 +10,8 @@ import com.defitracker.app.data.remote.BinanceApi
 import com.defitracker.app.data.remote.CoinStatsApi
 import com.defitracker.app.data.remote.dto.CoinStatsBalanceDto
 import com.defitracker.app.data.remote.dto.CoinStatsTransactionDto
+import com.defitracker.app.data.remote.dto.CoinStatsTransactionSyncRequest
+import com.defitracker.app.data.remote.dto.CoinStatsTransactionSyncWalletDto
 import com.defitracker.app.data.remote.dto.EtherscanTransactionDto
 import com.defitracker.app.domain.model.CryptoPair
 import com.defitracker.app.domain.model.PairDetail
@@ -20,6 +22,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import retrofit2.HttpException
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -46,6 +50,7 @@ class CryptoRepositoryImpl @Inject constructor(
             return size > KLINE_CACHE_MAX_ENTRIES
         }
     }
+    private val transactionSyncTimes = mutableMapOf<String, Long>()
 
     override fun getTrackedPairs(): Flow<List<CryptoPair>> {
         return trackedPairDao.getAllTrackedPairs().map { entities ->
@@ -171,20 +176,29 @@ class CryptoRepositoryImpl @Inject constructor(
         results
     }
 
-    override suspend fun getWalletTransactions(address: String): List<EtherscanTransactionDto> = coroutineScope {
+    override suspend fun getWalletTransactions(
+        address: String,
+        limit: Int,
+        forceRefresh: Boolean
+    ): List<EtherscanTransactionDto> = coroutineScope {
         val allTransactions = mutableListOf<EtherscanTransactionDto>()
+        val normalizedLimit = limit.coerceIn(TRANSACTION_MIN_DISPLAY_LIMIT, TRANSACTION_MAX_DISPLAY_LIMIT)
+        val queryWindow = TransactionQueryWindow.recent(TRANSACTION_QUERY_DAYS)
 
         transactionChains.forEachIndexed { index, chain ->
             try {
-                if (index > 0) delay(350)
+                if (index > 0) delay(TRANSACTION_CHAIN_DELAY_MS)
 
-                val transactions = coinStatsApi.getWalletTransactions(
+                if (forceRefresh) {
+                    syncWalletTransactions(address, chain)
+                }
+
+                val transactions = getWalletTransactionsForChain(
                     address = address,
-                    chainId = chain.id,
-                    apiKey = Constants.COINSTATS_API_KEY
-                ).result
-                    .filterNot { it.type.equals("Fill", ignoreCase = true) }
-                    .mapNotNull { it.toTransactionDto(address, chain.name) }
+                    chain = chain,
+                    limit = normalizedLimit,
+                    queryWindow = queryWindow
+                )
 
                 allTransactions += transactions
             } catch (e: CancellationException) {
@@ -208,6 +222,94 @@ class CryptoRepositoryImpl @Inject constructor(
                 compareByDescending<EtherscanTransactionDto> { it.timeStamp.toLongOrNull() ?: 0L }
                     .thenBy { it.network ?: "" }
             )
+            .take(normalizedLimit)
+    }
+
+    private suspend fun syncWalletTransactions(address: String, chain: CoinStatsChain) {
+        val syncKey = "${address.lowercase()}:${chain.id}"
+        if (isFreshTransactionSync(syncKey)) return
+
+        try {
+            val response = coinStatsApi.syncWalletTransactions(
+                apiKey = Constants.COINSTATS_API_KEY,
+                body = CoinStatsTransactionSyncRequest(
+                    wallets = listOf(
+                        CoinStatsTransactionSyncWalletDto(
+                            address = address,
+                            connectionId = chain.id
+                        )
+                    )
+                )
+            )
+            if (response.status.equals("syncing", ignoreCase = true)) {
+                waitForWalletTransactionsSync(address, chain)
+            }
+            transactionSyncTimes[syncKey] = System.currentTimeMillis()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: HttpException) {
+            if (e.code() == 401 || e.code() == 403) {
+                throw IllegalStateException("CoinStats API key is invalid or expired.")
+            }
+            if (e.code() == 429) {
+                throw IllegalStateException("CoinStats rate limit reached. Try again later.")
+            }
+            if (e.code() == 409) {
+                waitForWalletTransactionsSync(address, chain)
+                transactionSyncTimes[syncKey] = System.currentTimeMillis()
+            } else {
+                logNonFatal("Wallet transactions sync failed for ${chain.name}", e)
+            }
+        } catch (e: Exception) {
+            logNonFatal("Unexpected wallet transactions sync failure for ${chain.name}", e)
+        }
+    }
+
+    private fun isFreshTransactionSync(syncKey: String): Boolean {
+        val syncedAt = transactionSyncTimes[syncKey] ?: return false
+        return System.currentTimeMillis() - syncedAt <= TRANSACTION_SYNC_TTL_MS
+    }
+
+    private suspend fun waitForWalletTransactionsSync(address: String, chain: CoinStatsChain) {
+        repeat(TRANSACTION_SYNC_STATUS_ATTEMPTS) {
+            delay(TRANSACTION_SYNC_STATUS_DELAY_MS)
+
+            val status = coinStatsApi.getWalletTransactionSyncStatus(
+                address = address,
+                chainId = chain.id,
+                apiKey = Constants.COINSTATS_API_KEY
+            ).status
+
+            if (status.equals("synced", ignoreCase = true)) {
+                return
+            }
+        }
+    }
+
+    private suspend fun getWalletTransactionsForChain(
+        address: String,
+        chain: CoinStatsChain,
+        limit: Int,
+        queryWindow: TransactionQueryWindow
+    ): List<EtherscanTransactionDto> {
+        val transactions = mutableListOf<EtherscanTransactionDto>()
+        val pageLimit = limit.coerceIn(TRANSACTION_MIN_DISPLAY_LIMIT, TRANSACTION_PAGE_LIMIT)
+
+        val result = coinStatsApi.getWalletTransactions(
+            address = address,
+            chainId = chain.id,
+            page = 1,
+            limit = pageLimit,
+            from = queryWindow.from,
+            to = queryWindow.to,
+            apiKey = Constants.COINSTATS_API_KEY
+        ).result
+
+        transactions += result
+            .filterNot { it.type.equals("Fill", ignoreCase = true) }
+            .mapNotNull { it.toTransactionDto(address, chain.name) }
+
+        return transactions
     }
 
     private fun CoinStatsTransactionDto.toTransactionDto(
@@ -221,7 +323,7 @@ class CryptoRepositoryImpl @Inject constructor(
         val isSent = action.equals("Sent", ignoreCase = true) || count < 0.0
         val hashId = hash?.id ?: firstItem?.id ?: return null
         val timestamp = try {
-            date?.let { java.time.Instant.parse(it).epochSecond.toString() } ?: "0"
+            date?.let { Instant.parse(it).epochSecond.toString() } ?: "0"
         } catch (_: Exception) {
             "0"
         }
@@ -328,6 +430,21 @@ class CryptoRepositoryImpl @Inject constructor(
         val rows: List<List<Any>>
     )
 
+    private data class TransactionQueryWindow(
+        val from: String,
+        val to: String
+    ) {
+        companion object {
+            fun recent(days: Long): TransactionQueryWindow {
+                val now = Instant.now()
+                return TransactionQueryWindow(
+                    from = now.minus(days, ChronoUnit.DAYS).toString(),
+                    to = now.toString()
+                )
+            }
+        }
+    }
+
     private data class CoinStatsChain(val id: String, val name: String)
 
     private companion object {
@@ -335,6 +452,14 @@ class CryptoRepositoryImpl @Inject constructor(
         const val CHART_KLINE_PAGE_SIZE = 1000
         const val KLINE_CACHE_MAX_ENTRIES = 24
         const val KLINE_CACHE_TTL_MS = 30_000L
+        const val TRANSACTION_MIN_DISPLAY_LIMIT = 5
+        const val TRANSACTION_MAX_DISPLAY_LIMIT = 100
+        const val TRANSACTION_PAGE_LIMIT = 100
+        const val TRANSACTION_CHAIN_DELAY_MS = 450L
+        const val TRANSACTION_SYNC_STATUS_ATTEMPTS = 3
+        const val TRANSACTION_SYNC_STATUS_DELAY_MS = 650L
+        const val TRANSACTION_SYNC_TTL_MS = 60_000L
+        const val TRANSACTION_QUERY_DAYS = 365L
 
         val walletBalanceChains = listOf(
             CoinStatsChain("ethereum", "Ether"),

@@ -15,10 +15,15 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+private const val INITIAL_TRANSACTION_LIMIT = 5
+private const val TRANSACTION_PAGE_INCREMENT = 5
+
 data class TransactionsState(
     val wallets: List<WalletEntity> = emptyList(),
     val selectedAddress: String = "",
     val transactions: List<EtherscanTransactionDto> = emptyList(),
+    val requestedLimit: Int = INITIAL_TRANSACTION_LIMIT,
+    val canLoadMore: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null
 )
@@ -60,19 +65,39 @@ class TransactionsViewModel @Inject constructor(
     }
 
     fun onAddressSelected(address: String) {
-        _state.value = _state.value.copy(selectedAddress = address)
-        fetchTransactions(address)
+        _state.value = _state.value.copy(
+            selectedAddress = address,
+            requestedLimit = INITIAL_TRANSACTION_LIMIT,
+            canLoadMore = false
+        )
+        fetchTransactions(address, INITIAL_TRANSACTION_LIMIT, forceRefresh = true)
     }
 
-    fun fetchTransactions(address: String) {
+    fun fetchTransactions(
+        address: String,
+        limit: Int = INITIAL_TRANSACTION_LIMIT,
+        forceRefresh: Boolean = true
+    ) {
         if (address.isEmpty()) return
         
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, transactions = emptyList())
+            _state.value = _state.value.copy(
+                requestedLimit = limit,
+                isLoading = true,
+                error = null
+            )
             try {
-                val txs = repository.getWalletTransactions(address)
-                _state.value = _state.value.copy(transactions = txs, isLoading = false)
+                val txs = repository.getWalletTransactions(
+                    address = address,
+                    limit = limit,
+                    forceRefresh = forceRefresh
+                )
+                _state.value = _state.value.copy(
+                    transactions = txs,
+                    canLoadMore = txs.size >= limit,
+                    isLoading = false
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -80,4 +105,16 @@ class TransactionsViewModel @Inject constructor(
             }
         }
     }
+
+    fun loadMoreTransactions() {
+        val address = _state.value.selectedAddress
+        if (address.isBlank() || _state.value.isLoading) return
+
+        fetchTransactions(
+            address = address,
+            limit = _state.value.requestedLimit + TRANSACTION_PAGE_INCREMENT,
+            forceRefresh = false
+        )
+    }
+
 }

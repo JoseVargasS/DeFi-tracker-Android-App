@@ -20,5 +20,9 @@ interface CryptoRepository {
     suspend fun saveWallet(address: String, name: String)
     suspend fun deleteWallet(address: String)
     suspend fun getWalletBalances(address: String): Map<String, List<CoinStatsBalanceDto>>
-    suspend fun getWalletTransactions(address: String): List<EtherscanTransactionDto>
+    suspend fun getWalletTransactions(
+        address: String,
+        limit: Int = 5,
+        forceRefresh: Boolean = true
+    ): List<EtherscanTransactionDto>
 }

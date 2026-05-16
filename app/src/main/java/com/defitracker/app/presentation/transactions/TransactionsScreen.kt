@@ -134,6 +134,22 @@ fun TransactionsScreen(
                     TransactionRow(tx = tx, userAddress = state.selectedAddress)
                 }
             }
+
+            if (state.canLoadMore) {
+                item(key = "load-more-transactions") {
+                    OutlinedButton(
+                        onClick = viewModel::loadMoreTransactions,
+                        enabled = !state.isLoading,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant)
+                        )
+                    ) {
+                        Text("View 5 more", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }
@@ -302,6 +318,7 @@ private fun TransactionRow(tx: EtherscanTransactionDto, userAddress: String) {
     val directionColor = if (isSent) Color(0xFFF6465D) else Color(0xFF0ECB81)
     val directionIcon = if (isSent) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward
     val amount = remember(tx.value, tx.tokenDecimal) { tx.value.toAmount(tx.tokenDecimal) }
+    val timestamp = remember(tx.timeStamp) { tx.timeStamp.formatTimestamp() }
     val tokenSymbol = tx.tokenSymbol ?: tx.symbol ?: "Token"
     val counterparty = if (isSent) tx.to else tx.from
 
@@ -344,7 +361,7 @@ private fun TransactionRow(tx: EtherscanTransactionDto, userAddress: String) {
                             )
                         }
                     }
-                    Text(tx.timeStamp.formatTimestamp(), color = Color.Gray, fontSize = 12.sp)
+                    Text(timestamp, color = Color.Gray, fontSize = 12.sp)
                 }
 
                 Column(horizontalAlignment = Alignment.End) {

@@ -70,7 +70,7 @@ class WalletViewModel @Inject constructor(
         
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, balances = emptyMap())
+            _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val balances = repository.getWalletBalances(address)
                 _state.value = _state.value.copy(balances = balances, isLoading = false)

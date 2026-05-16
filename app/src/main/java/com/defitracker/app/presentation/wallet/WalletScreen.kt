@@ -38,9 +38,13 @@ fun WalletScreen(
     var addressInput by remember { mutableStateOf("") }
     val clipboardManager = LocalClipboardManager.current
 
-    val allAssets = state.balances.values.flatten()
-    val totalWorth = allAssets.sumOf { (it.amount ?: 0.0) * (it.price ?: 0.0) }
-    val selectedWallet = state.wallets.find { it.address == state.selectedAddress }
+    val allAssets = remember(state.balances) { state.balances.values.flatten() }
+    val totalWorth = remember(allAssets) {
+        allAssets.sumOf { (it.amount ?: 0.0) * (it.price ?: 0.0) }
+    }
+    val selectedWallet = remember(state.wallets, state.selectedAddress) {
+        state.wallets.find { it.address == state.selectedAddress }
+    }
     val selectedLabel = selectedWallet?.name?.takeIf { it.isNotBlank() } ?: "Selected wallet"
     val shortAddress = state.selectedAddress
         .takeIf { it.isNotBlank() }
@@ -368,7 +372,9 @@ fun EmptyBalancesCard() {
 
 @Composable
 fun ChainCard(chainName: String, assets: List<com.defitracker.app.data.remote.dto.CoinStatsBalanceDto>) {
-    val chainTotal = assets.sumOf { (it.amount ?: 0.0) * (it.price ?: 0.0) }
+    val chainTotal = remember(assets) {
+        assets.sumOf { (it.amount ?: 0.0) * (it.price ?: 0.0) }
+    }
     val chainColor = when (chainName) {
         "Ether" -> Color(0xFF627EEA)
         "BSC" -> Color(0xFFF3BA2F)

@@ -81,12 +81,12 @@ class CryptoListViewModel @Inject constructor(
         refreshJob = viewModelScope.launch {
             var tick = 0
             while (true) {
+                delay(PRICE_REFRESH_MS)
                 refreshPrices()
                 tick++
                 if (tick % WIDGET_REFRESH_TICKS == 0) {
                     updateWidget()
                 }
-                delay(PRICE_REFRESH_MS)
             }
         }
     }

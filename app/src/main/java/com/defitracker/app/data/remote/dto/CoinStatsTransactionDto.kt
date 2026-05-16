@@ -10,6 +10,19 @@ data class CoinStatsTransactionMetaDto(
     val limit: Int? = null
 )
 
+data class CoinStatsTransactionSyncRequest(
+    val wallets: List<CoinStatsTransactionSyncWalletDto>
+)
+
+data class CoinStatsTransactionSyncWalletDto(
+    val address: String,
+    val connectionId: String
+)
+
+data class CoinStatsTransactionSyncResponse(
+    val status: String? = null
+)
+
 data class CoinStatsTransactionDto(
     val type: String? = null,
     val date: String? = null,
