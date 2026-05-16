@@ -242,7 +242,7 @@ private fun List<CandleData>.spansMultipleYears(): Boolean {
 private fun CryptoDetailState.viewportKey(): String {
     val first = candles.firstOrNull()?.time ?: 0L
     val last = candles.lastOrNull()?.time ?: 0L
-    return "$symbol-$selectedInterval-${candles.size}-$first-$last"
+    return "$symbol-${candles.size}-$first-$last"
 }
 
 private fun formatVol(vol: String): String {
@@ -252,6 +252,12 @@ private fun formatVol(vol: String): String {
         v >= 1_000 -> String.format(Locale.US, "%.2fK", v / 1_000)
         else -> String.format(Locale.US, "%.2f", v)
     }
+}
+
+private fun List<Pair<Long, Double>>.getValueAtCandleIndex(index: Int): Double? {
+    val direct = getOrNull(index)
+    if (direct != null && direct.first.toInt() == index) return direct.second
+    return firstOrNull { it.first.toInt() == index }?.second
 }
 
 // ─── PRICE CHART ────────────────────────────────────────────────────────────
@@ -300,6 +306,8 @@ fun PriceChart(
                     style = Paint.Style.STROKE
                     strokeWidth = 2f
                 }
+                private val yTagRect = RectF()
+                private val xTagRect = RectF()
 
                 private var lastTouchYPx = -1f
                 private var downX = 0f
@@ -373,9 +381,19 @@ fun PriceChart(
                     val visibleEnd = highestVisibleX.toInt().coerceIn(0, entries.size - 1)
                     if (visibleStart >= visibleEnd) return
                     
-                    val visible = entries.subList(visibleStart, (visibleEnd + 1).coerceAtMost(entries.size))
-                    val maxEntry = visible.maxByOrNull { it.high } ?: return
-                    val minEntry = visible.minByOrNull { it.low } ?: return
+                    var maxIndex = visibleStart
+                    var minIndex = visibleStart
+                    for (index in visibleStart..visibleEnd) {
+                        val entry = entries[index]
+                        if (entry.high > entries[maxIndex].high) {
+                            maxIndex = index
+                        }
+                        if (entry.low < entries[minIndex].low) {
+                            minIndex = index
+                        }
+                    }
+                    val maxEntry = entries[maxIndex]
+                    val minEntry = entries[minIndex]
 
                     val trans = getTransformer(YAxis.AxisDependency.LEFT)
                     val contentLeft = viewPortHandler.contentLeft()
@@ -386,7 +404,7 @@ fun PriceChart(
                     // --- Draw Max/Min Refined ---
                     // Draw Max Label
                     run {
-                        val pts = floatArrayOf(entries.indexOf(maxEntry).toFloat(), maxEntry.high.toFloat())
+                        val pts = floatArrayOf(maxIndex.toFloat(), maxEntry.high.toFloat())
                         trans.pointValuesToPixel(pts)
                         val px = pts[0]
                         val py = pts[1]
@@ -400,7 +418,7 @@ fun PriceChart(
 
                     // Draw Min Label
                     run {
-                        val pts = floatArrayOf(entries.indexOf(minEntry).toFloat(), minEntry.low.toFloat())
+                        val pts = floatArrayOf(minIndex.toFloat(), minEntry.low.toFloat())
                         trans.pointValuesToPixel(pts)
                         val px = pts[0]
                         val py = pts[1]
@@ -449,22 +467,22 @@ fun PriceChart(
                     val offsetRight = if (tagRight > chartWidth) tagRight - chartWidth + 4f else 0f
                     
                     val tagGap = 6f
-                    val rectY = RectF(
+                    yTagRect.set(
                         contentRight - offsetRight, 
                         py + tagGap, 
                         contentRight + maxWidth + 20f - offsetRight, 
                         py + tagGap + (lineHeight * 2) + 4f
                     )
-                    canvas.drawRoundRect(rectY, 4f, 4f, tagBackgroundPaint)
-                    canvas.drawText(priceText, rectY.centerX(), py + tagGap + thY + 2f, tagTextPaint)
-                    canvas.drawText(pctText, rectY.centerX(), py + tagGap + (thY * 2) + 10f, tagTextPaint)
+                    canvas.drawRoundRect(yTagRect, 4f, 4f, tagBackgroundPaint)
+                    canvas.drawText(priceText, yTagRect.centerX(), py + tagGap + thY + 2f, tagTextPaint)
+                    canvas.drawText(pctText, yTagRect.centerX(), py + tagGap + (thY * 2) + 10f, tagTextPaint)
 
                     // X-Axis Tag (Date)
                     val dateText = xAxis.valueFormatter.getFormattedValue(h.x)
                     val twX = tagTextPaint.measureText(dateText)
-                    val rectX = RectF(px - twX/2 - 10f, contentBottom, px + twX/2 + 10f, contentBottom + thY + 16f)
-                    canvas.drawRoundRect(rectX, 4f, 4f, tagBackgroundPaint)
-                    canvas.drawText(dateText, rectX.centerX(), rectX.centerY() + thY/3, tagTextPaint)
+                    xTagRect.set(px - twX/2 - 10f, contentBottom, px + twX/2 + 10f, contentBottom + thY + 16f)
+                    canvas.drawRoundRect(xTagRect, 4f, 4f, tagBackgroundPaint)
+                    canvas.drawText(dateText, xTagRect.centerX(), xTagRect.centerY() + thY/3, tagTextPaint)
                 }
             }.apply {
                 setupCommonChartParams()
@@ -523,29 +541,50 @@ fun PriceChart(
             chart.xAxis.applyTimeAxis(state)
 
             if (isNewDataset) {
-                val candleEntries = state.candles.mapIndexed { index, it ->
-                    CandleEntry(index.toFloat(), it.high.toFloat(), it.low.toFloat(), it.open.toFloat(), it.close.toFloat())
+                val candleEntries = ArrayList<CandleEntry>(state.candles.size)
+                state.candles.forEachIndexed { index, candle ->
+                    candleEntries.add(
+                        CandleEntry(
+                            index.toFloat(),
+                            candle.high.toFloat(),
+                            candle.low.toFloat(),
+                            candle.open.toFloat(),
+                            candle.close.toFloat()
+                        )
+                    )
                 }
                 val combinedData = CombinedData()
                 if (state.bbUpper.isNotEmpty()) {
-                    val upperEntries = state.bbUpper.mapIndexed { index, it ->
+                    val upperEntries = ArrayList<Entry>(state.bbUpper.size)
+                    state.bbUpper.forEachIndexed { index, value ->
                         val offsetIndex = index + (state.candles.size - state.bbUpper.size)
-                        Entry(offsetIndex.toFloat(), it.second.toFloat())
+                        upperEntries.add(Entry(offsetIndex.toFloat(), value.second.toFloat()))
                     }
-                    val middleEntries = state.bbMiddle.mapIndexed { index, it ->
+                    val middleEntries = ArrayList<Entry>(state.bbMiddle.size)
+                    state.bbMiddle.forEachIndexed { index, value ->
                         val offsetIndex = index + (state.candles.size - state.bbMiddle.size)
-                        Entry(offsetIndex.toFloat(), it.second.toFloat())
+                        middleEntries.add(Entry(offsetIndex.toFloat(), value.second.toFloat()))
                     }
-                    val lowerEntries = state.bbLower.mapIndexed { index, it ->
+                    val lowerEntries = ArrayList<Entry>(state.bbLower.size)
+                    state.bbLower.forEachIndexed { index, value ->
                         val offsetIndex = index + (state.candles.size - state.bbLower.size)
-                        Entry(offsetIndex.toFloat(), it.second.toFloat())
+                        lowerEntries.add(Entry(offsetIndex.toFloat(), value.second.toFloat()))
                     }
                     val bbColor = GraphicsColor.parseColor("#FF9800")
                     val middleColor = GraphicsColor.parseColor("#E91E63")
-                    val areaEntries = state.bbUpper.mapIndexed { index, it ->
+                    val areaEntries = ArrayList<CandleEntry>(state.bbUpper.size)
+                    state.bbUpper.forEachIndexed { index, value ->
                         val offsetIndex = index + (state.candles.size - state.bbUpper.size)
-                        val lower = state.bbLower.getOrNull(index)?.second ?: it.second
-                        CandleEntry(offsetIndex.toFloat(), it.second.toFloat(), lower.toFloat(), lower.toFloat(), it.second.toFloat())
+                        val lower = state.bbLower.getOrNull(index)?.second ?: value.second
+                        areaEntries.add(
+                            CandleEntry(
+                                offsetIndex.toFloat(),
+                                value.second.toFloat(),
+                                lower.toFloat(),
+                                lower.toFloat(),
+                                value.second.toFloat()
+                            )
+                        )
                     }
                     val areaDs = CandleDataSet(areaEntries, "BBArea").apply {
                         axisDependency = YAxis.AxisDependency.LEFT
@@ -668,15 +707,21 @@ fun VolumeChart(
             val isNewDataset = lastRenderedDataKey.value != viewportKey
 
             if (isNewDataset) {
-                val entries = state.candles.mapIndexed { index, it ->
-                    BarEntry(index.toFloat(), it.volume.toFloat())
+                val entries = ArrayList<BarEntry>(state.candles.size)
+                val colors = ArrayList<Int>(state.candles.size)
+                state.candles.forEachIndexed { index, candle ->
+                    entries.add(BarEntry(index.toFloat(), candle.volume.toFloat()))
+                    colors.add(
+                        if (candle.close >= candle.open) {
+                            GraphicsColor.parseColor("#1ECB81")
+                        } else {
+                            GraphicsColor.parseColor("#F6465D")
+                        }
+                    )
                 }
                 val dataset = BarDataSet(entries, "Vol").apply {
                     setDrawValues(false)
                     highLightAlpha = 0
-                    val colors = state.candles.map {
-                        if (it.close >= it.open) GraphicsColor.parseColor("#1ECB81") else GraphicsColor.parseColor("#F6465D")
-                    }
                     setColors(colors)
                 }
                 chart.data = BarData(dataset)
@@ -746,8 +791,8 @@ fun StochRSIChart(
                         canvas.drawLine(px, viewPortHandler.contentTop(), px, viewPortHandler.contentBottom(), linePaint)
                         
                         val idx = h.x.toInt()
-                        val k = currentState.stochK.find { it.first.toInt() == idx }?.second
-                        val d = currentState.stochD.find { it.first.toInt() == idx }?.second
+                        val k = currentState.stochK.getValueAtCandleIndex(idx)
+                        val d = currentState.stochD.getValueAtCandleIndex(idx)
                         if (k != null && d != null) {
                             kVal = k
                             dVal = d
@@ -795,8 +840,14 @@ fun StochRSIChart(
             if (isNewDataset) {
                 val lineData = LineData()
                 if (state.stochK.isNotEmpty()) {
-                    val kEntries = state.stochK.map { Entry(it.first.toFloat(), it.second.toFloat()) }
-                    val dEntries = state.stochD.map { Entry(it.first.toFloat(), it.second.toFloat()) }
+                    val kEntries = ArrayList<Entry>(state.stochK.size)
+                    state.stochK.forEach { value ->
+                        kEntries.add(Entry(value.first.toFloat(), value.second.toFloat()))
+                    }
+                    val dEntries = ArrayList<Entry>(state.stochD.size)
+                    state.stochD.forEach { value ->
+                        dEntries.add(Entry(value.first.toFloat(), value.second.toFloat()))
+                    }
                     lineData.addDataSet(createBBLineDataSet(kEntries, "K", GraphicsColor.parseColor("#FF9800"), 1f, highlight = true))
                     lineData.addDataSet(createBBLineDataSet(dEntries, "D", GraphicsColor.parseColor("#E91E63"), 1f, highlight = true))
                 }
@@ -861,9 +912,9 @@ private fun syncHighlights(priceChart: CombinedChart, volumeChart: BarChart?, st
 // ─── COMMON CHART SETUP ──────────────────────────────────────────────────────
 private fun XAxis.applyTimeAxis(state: CryptoDetailState) {
     valueFormatter = object : ValueFormatter() {
-        private val daySdf = SimpleDateFormat("MM/dd", Locale.getDefault())
-        private val yearSdf = SimpleDateFormat("yyyy/MM", Locale.getDefault())
-        private val hourSdf = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
+        private val daySdf = SimpleDateFormat("MM/dd", Locale.US)
+        private val yearSdf = SimpleDateFormat("yyyy/MM", Locale.US)
+        private val hourSdf = SimpleDateFormat("MM/dd HH:mm", Locale.US)
 
         override fun getFormattedValue(value: Float): String {
             if (state.candles.isEmpty()) return ""
@@ -1028,8 +1079,6 @@ private fun updateLastStochInPlace(chart: LineChart, state: CryptoDetailState) {
 }
 
 // ─── INITIAL ZOOM / SCROLL ───────────────────────────────────────────────────
-private var zoomAppliedForDataset = false
-
 private fun BarLineChartBase<*>.applySyncAndInitialZoom(
     data: List<*>,
     resetViewport: Boolean = false,
@@ -1038,14 +1087,12 @@ private fun BarLineChartBase<*>.applySyncAndInitialZoom(
 ) {
     if (data.isEmpty()) return
     if (resetViewport) {
-        zoomAppliedForDataset = false
         notifyDataSetChanged()
         viewPortHandler.setMinimumScaleX(1f)
         viewPortHandler.setMaximumScaleX(1_000_000f)
         viewPortHandler.setMinimumScaleY(1f)
         viewPortHandler.setMaximumScaleY(1_000_000f)
         if (!skipPositioning) {
-            zoomAppliedForDataset = true
             post {
                 val scaleX = data.size.toFloat() / INITIAL_VISIBLE_CANDLES
                 val lastX = (data.size - 1).toFloat().coerceAtLeast(0f)
@@ -1069,7 +1116,7 @@ private const val INITIAL_VISIBLE_CANDLES = 100f
  * Full OKX-style marker: shows OHLCV card next to the candle.
  * Fix 3: accepts a lambda so it always reads the latest [CryptoDetailState].
  */
-@SuppressLint("ViewConstructor")
+@SuppressLint("ViewConstructor", "SetTextI18n")
 class OKXChartMarker(
     context: android.content.Context,
     private val stateProvider: () -> CryptoDetailState
@@ -1084,9 +1131,9 @@ class OKXChartMarker(
     private val tvChangePct: TextView = findViewById(R.id.tvChangePct)
     private val tvVolume: TextView = findViewById(R.id.tvVolume)
 
-    private val daySdf = SimpleDateFormat("MM/dd", Locale.getDefault())
-    private val yearSdf = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
-    private val hourSdf = SimpleDateFormat("MM/dd, HH:mm", Locale.getDefault())
+    private val daySdf = SimpleDateFormat("MM/dd", Locale.US)
+    private val yearSdf = SimpleDateFormat("yyyy/MM/dd", Locale.US)
+    private val hourSdf = SimpleDateFormat("MM/dd, HH:mm", Locale.US)
 
     private var lastHighlight: Highlight? = null
     override fun refreshContent(e: Entry?, highlight: Highlight?) {

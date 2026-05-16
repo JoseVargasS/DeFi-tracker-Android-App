@@ -109,16 +109,7 @@ class CryptoDetailViewModel @Inject constructor(
             try {
                 val rawKlines = repository.getKlines(symbol, normalizedInterval.toBinanceInterval(), source)
                 val chartData = withContext(Dispatchers.Default) {
-                    val candles = rawKlines.map {
-                        CandleData(
-                            time = (it[0] as? Number)?.toLong() ?: it[0].toString().toLongOrNull() ?: 0L,
-                            open = it[1].toString().toDoubleOrNull() ?: 0.0,
-                            high = it[2].toString().toDoubleOrNull() ?: 0.0,
-                            low = it[3].toString().toDoubleOrNull() ?: 0.0,
-                            close = it[4].toString().toDoubleOrNull() ?: 0.0,
-                            volume = it.getOrNull(5)?.toString()?.toDoubleOrNull() ?: 0.0
-                        )
-                    }.filter { it.time > 0 }.aggregateForInterval(normalizedInterval)
+                    val candles = rawKlines.toCandles().aggregateForInterval(normalizedInterval)
 
                     if (candles.isEmpty()) {
                         return@withContext ChartComputation()
@@ -145,6 +136,42 @@ class CryptoDetailViewModel @Inject constructor(
         }
     }
 
+    private fun List<List<Any>>.toCandles(): List<CandleData> {
+        val candles = ArrayList<CandleData>(size)
+        forEach { row ->
+            val time = row.getOrNull(0).toLongValue()
+            if (time > 0L) {
+                candles.add(
+                    CandleData(
+                        time = time,
+                        open = row.getOrNull(1).toDoubleValue(),
+                        high = row.getOrNull(2).toDoubleValue(),
+                        low = row.getOrNull(3).toDoubleValue(),
+                        close = row.getOrNull(4).toDoubleValue(),
+                        volume = row.getOrNull(5).toDoubleValue()
+                    )
+                )
+            }
+        }
+        return candles
+    }
+
+    private fun Any?.toLongValue(): Long {
+        return when (this) {
+            is Number -> toLong()
+            is String -> toLongOrNull() ?: toDoubleOrNull()?.toLong() ?: 0L
+            else -> toString().toLongOrNull() ?: toString().toDoubleOrNull()?.toLong() ?: 0L
+        }
+    }
+
+    private fun Any?.toDoubleValue(): Double {
+        return when (this) {
+            is Number -> toDouble()
+            is String -> toDoubleOrNull() ?: 0.0
+            else -> toString().toDoubleOrNull() ?: 0.0
+        }
+    }
+
     private fun List<CandleData>.toChartComputation(): ChartComputation {
         if (isEmpty()) return ChartComputation()
 
@@ -153,13 +180,24 @@ class CryptoDetailViewModel @Inject constructor(
         val bbUpper = mutableListOf<Pair<Long, Double>>()
         val bbMiddle = mutableListOf<Pair<Long, Double>>()
         val bbLower = mutableListOf<Pair<Long, Double>>()
+        var rollingSum = 0.0
+        var rollingSquaredSum = 0.0
 
         for (i in indices) {
+            val close = this[i].close
+            rollingSum += close
+            rollingSquaredSum += close * close
+
+            if (i >= period) {
+                val droppedClose = this[i - period].close
+                rollingSum -= droppedClose
+                rollingSquaredSum -= droppedClose * droppedClose
+            }
+
             if (i >= period - 1) {
-                val slice = subList(i - period + 1, i + 1)
-                val sma = slice.sumOf { it.close } / period
-                val variance = slice.sumOf { (it.close - sma).pow(2.0) } / period
-                val stdDev = sqrt(variance)
+                val sma = rollingSum / period
+                val variance = (rollingSquaredSum / period) - sma.pow(2.0)
+                val stdDev = sqrt(variance.coerceAtLeast(0.0))
 
                 bbMiddle.add(i.toLong() to sma)
                 bbUpper.add(i.toLong() to (sma + multiplier * stdDev))
@@ -211,7 +249,7 @@ class CryptoDetailViewModel @Inject constructor(
     private fun calculateRSI(candles: List<CandleData>): List<Double> {
         val rsi = mutableListOf<Double>()
         val period = STOCH_RSI_PERIOD
-        if (candles.size < period) return emptyList()
+        if (candles.size <= period) return emptyList()
         
         var avgGain = 0.0
         var avgLoss = 0.0
@@ -243,11 +281,15 @@ class CryptoDetailViewModel @Inject constructor(
 
     private fun calculateSMA(values: List<Double>): List<Double> {
         val period = STOCH_SMOOTH_PERIOD
-        val sma = mutableListOf<Double>()
+        val sma = ArrayList<Double>(values.size)
+        var rollingSum = 0.0
         for (i in values.indices) {
+            rollingSum += values[i]
+            if (i >= period) {
+                rollingSum -= values[i - period]
+            }
             if (i >= period - 1) {
-                val slice = values.subList(i - period + 1, i + 1)
-                sma.add(slice.average())
+                sma.add(rollingSum / period)
             } else {
                 sma.add(values[i])
             }
@@ -271,18 +313,38 @@ class CryptoDetailViewModel @Inject constructor(
             else -> return this
         }
 
-        return chunked(chunkSize).mapNotNull { chunk ->
-            val first = chunk.firstOrNull() ?: return@mapNotNull null
-            val last = chunk.last()
-            CandleData(
-                time = first.time,
-                open = first.open,
-                high = chunk.maxOf { it.high },
-                low = chunk.minOf { it.low },
-                close = last.close,
-                volume = chunk.sumOf { it.volume }
+        val aggregated = ArrayList<CandleData>((size + chunkSize - 1) / chunkSize)
+        var index = 0
+        while (index < size) {
+            val first = this[index]
+            var last = first
+            var high = first.high
+            var low = first.low
+            var volume = 0.0
+            val endExclusive = (index + chunkSize).coerceAtMost(size)
+
+            for (itemIndex in index until endExclusive) {
+                val item = this[itemIndex]
+                last = item
+                high = high.coerceAtLeast(item.high)
+                low = low.coerceAtMost(item.low)
+                volume += item.volume
+            }
+
+            aggregated.add(
+                CandleData(
+                    time = first.time,
+                    open = first.open,
+                    high = high,
+                    low = low,
+                    close = last.close,
+                    volume = volume
+                )
             )
+            index += chunkSize
         }
+
+        return aggregated
     }
 
     private companion object {

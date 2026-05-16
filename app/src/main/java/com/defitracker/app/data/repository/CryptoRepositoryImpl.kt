@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import retrofit2.HttpException
+import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,6 +37,15 @@ class CryptoRepositoryImpl @Inject constructor(
     }
 
     private var cachedSymbols: List<Pair<String, String>> = emptyList()
+    private val klineCache = object : LinkedHashMap<String, CachedKlines>(
+        KLINE_CACHE_MAX_ENTRIES,
+        0.75f,
+        true
+    ) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedKlines>?): Boolean {
+            return size > KLINE_CACHE_MAX_ENTRIES
+        }
+    }
 
     override fun getTrackedPairs(): Flow<List<CryptoPair>> {
         return trackedPairDao.getAllTrackedPairs().map { entities ->
@@ -75,15 +85,23 @@ class CryptoRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getKlines(symbol: String, interval: String, source: String): List<List<Any>> {
+        val cacheKey = "$source:$symbol:$interval"
+        getFreshCachedKlines(cacheKey)?.let { return it }
+
         return try {
-            when (source) {
+            val klines = when (source) {
                 "Binance" -> getBinanceKlines(symbol, interval)
                 else -> getBinanceKlines(symbol, interval)
             }
+            if (klines.isNotEmpty()) {
+                klineCache[cacheKey] = CachedKlines(System.currentTimeMillis(), klines)
+            }
+            klines
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
-            emptyList()
+        } catch (e: Exception) {
+            logNonFatal("Klines request failed for $symbol/$interval", e)
+            klineCache[cacheKey]?.rows ?: emptyList()
         }
     }
 
@@ -260,8 +278,9 @@ class CryptoRepositoryImpl @Inject constructor(
         val allKlines = mutableListOf<List<Any>>()
         var endTime: Long? = null
         var pagesFetched = 0
+        val pageCount = chartPageCountForInterval(interval)
 
-        while (pagesFetched < CHART_KLINE_PAGE_COUNT) {
+        while (pagesFetched < pageCount) {
             val page = binanceApi.getKlines(
                 symbol = symbol,
                 interval = interval,
@@ -282,6 +301,20 @@ class CryptoRepositoryImpl @Inject constructor(
         return allKlines
     }
 
+    private fun getFreshCachedKlines(cacheKey: String): List<List<Any>>? {
+        val cached = klineCache[cacheKey] ?: return null
+        val ageMs = System.currentTimeMillis() - cached.createdAtMs
+        return cached.rows.takeIf { ageMs <= KLINE_CACHE_TTL_MS && it.isNotEmpty() }
+    }
+
+    private fun chartPageCountForInterval(interval: String): Int {
+        return when (interval) {
+            "1m", "5m", "15m" -> 3
+            "30m", "1h" -> 2
+            else -> 1
+        }
+    }
+
     private fun formatPrice(price: Double): String {
         return if (price < 1.0) {
             String.format(java.util.Locale.US, "%.6f", price)
@@ -290,12 +323,18 @@ class CryptoRepositoryImpl @Inject constructor(
         }
     }
 
+    private data class CachedKlines(
+        val createdAtMs: Long,
+        val rows: List<List<Any>>
+    )
+
     private data class CoinStatsChain(val id: String, val name: String)
 
     private companion object {
         const val TAG = "CryptoRepository"
         const val CHART_KLINE_PAGE_SIZE = 1000
-        const val CHART_KLINE_PAGE_COUNT = 3
+        const val KLINE_CACHE_MAX_ENTRIES = 24
+        const val KLINE_CACHE_TTL_MS = 30_000L
 
         val walletBalanceChains = listOf(
             CoinStatsChain("ethereum", "Ether"),
