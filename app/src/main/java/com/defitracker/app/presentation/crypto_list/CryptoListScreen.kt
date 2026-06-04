@@ -45,8 +45,10 @@ fun CryptoListScreen(
         val query = searchQuery.trim()
         if (query.isEmpty()) emptyList()
         else state.availableSymbols.filter {
-            it.first.contains(query, ignoreCase = true) ||
-            it.second.contains(query, ignoreCase = true)
+            it.symbol.contains(query, ignoreCase = true) ||
+            it.baseAsset.contains(query, ignoreCase = true) ||
+            it.quoteAsset.contains(query, ignoreCase = true) ||
+            it.displayName.contains(query, ignoreCase = true)
         }.take(10)
     }
 
@@ -103,7 +105,7 @@ fun CryptoListScreen(
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search symbol (e.g. BTC)...", color = Color.Gray, fontSize = 14.sp) },
+                            placeholder = { Text("Search symbol (e.g. ETH/BTC)...", color = Color.Gray, fontSize = 14.sp) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 8.dp)
@@ -146,14 +148,19 @@ fun CryptoListScreen(
                                     LazyColumn(modifier = Modifier.fillMaxWidth()) {
                                         items(
                                             items = filteredSymbols,
-                                            key = { (symbol, base) -> "$symbol-$base" }
-                                        ) { (symbol, base) ->
+                                            key = { pair -> pair.symbol }
+                                        ) { pair ->
                                             ListItem(
-                                                headlineContent = { Text(symbol, color = Color.White, fontSize = 14.sp) },
-                                                supportingContent = { Text(base, color = Color.Gray, fontSize = 11.sp) },
+                                                headlineContent = { Text(pair.displayName, color = Color.White, fontSize = 14.sp) },
+                                                supportingContent = { Text(pair.symbol, color = Color.Gray, fontSize = 11.sp) },
                                                 modifier = Modifier
                                                     .clickable {
-                                                        viewModel.onAddPair(symbol, base, "Binance")
+                                                        viewModel.onAddPair(
+                                                            symbol = pair.symbol,
+                                                            baseAsset = pair.baseAsset,
+                                                            quoteAsset = pair.quoteAsset,
+                                                            source = "Binance"
+                                                        )
                                                         isSearchMode = false
                                                         searchQuery = ""
                                                     }

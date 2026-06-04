@@ -112,13 +112,13 @@ class CryptoWidget : GlanceAppWidget() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = pair.baseAsset,
+                            text = "${pair.baseAsset}/${pair.quoteAsset}",
                             style = TextStyle(color = WidgetWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         )
                         Spacer(modifier = GlanceModifier.defaultWeight())
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
-                                text = "$${pair.price}",
+                                text = "${pair.price} ${pair.quoteAsset}",
                                 style = TextStyle(color = WidgetWhite, fontSize = 14.sp)
                             )
                             val priceChangeColor = if (pair.isPositive) WidgetGreen else WidgetRed

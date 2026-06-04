@@ -3,17 +3,18 @@ package com.defitracker.app.domain.repository
 import com.defitracker.app.data.local.WalletEntity
 import com.defitracker.app.data.remote.dto.CoinStatsBalanceDto
 import com.defitracker.app.data.remote.dto.EtherscanTransactionDto
+import com.defitracker.app.domain.model.AvailableCryptoPair
 import com.defitracker.app.domain.model.CryptoPair
 import com.defitracker.app.domain.model.PairDetail
 import kotlinx.coroutines.flow.Flow
 
 interface CryptoRepository {
     fun getTrackedPairs(): Flow<List<CryptoPair>>
-    suspend fun addTrackedPair(symbol: String, baseAsset: String, source: String)
+    suspend fun addTrackedPair(symbol: String, baseAsset: String, quoteAsset: String, source: String)
     suspend fun removeTrackedPair(symbol: String)
     suspend fun getPairDetail(symbol: String, source: String): PairDetail
     suspend fun getKlines(symbol: String, interval: String, source: String): List<List<Any>>
-    suspend fun getAvailableSymbols(): List<Pair<String, String>> // List of (Symbol, BaseAsset)
+    suspend fun getAvailableSymbols(): List<AvailableCryptoPair>
 
     // Wallets
     fun getSavedWallets(): Flow<List<WalletEntity>>

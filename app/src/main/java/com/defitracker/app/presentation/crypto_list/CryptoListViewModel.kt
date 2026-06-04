@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.defitracker.app.domain.model.AvailableCryptoPair
 import com.defitracker.app.domain.model.CryptoPair
 import com.defitracker.app.domain.repository.CryptoRepository
 import com.defitracker.app.widget.CryptoWidget
@@ -131,9 +132,9 @@ class CryptoListViewModel @Inject constructor(
         }
     }
 
-    fun onAddPair(symbol: String, baseAsset: String, source: String) {
+    fun onAddPair(symbol: String, baseAsset: String, quoteAsset: String, source: String) {
         viewModelScope.launch {
-            repository.addTrackedPair(symbol, baseAsset, source)
+            repository.addTrackedPair(symbol, baseAsset, quoteAsset, source)
         }
     }
 
@@ -157,7 +158,7 @@ class CryptoListViewModel @Inject constructor(
 
 data class CryptoListState(
     val pairs: List<CryptoPair> = emptyList(),
-    val availableSymbols: List<Pair<String, String>> = emptyList(),
+    val availableSymbols: List<AvailableCryptoPair> = emptyList(),
     val isLoading: Boolean = false,
     val error: String = "",
     val symbolsError: String = ""

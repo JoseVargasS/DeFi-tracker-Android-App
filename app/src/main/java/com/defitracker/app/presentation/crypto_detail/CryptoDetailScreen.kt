@@ -50,6 +50,7 @@ fun CryptoDetailScreen(
     viewModel: CryptoDetailViewModel = hiltViewModel()
 ) {
     val state = viewModel.state.value
+    val tradingPair = splitTradingPair(state.detail?.symbol ?: state.symbol)
 
     Scaffold(
         topBar = {
@@ -65,7 +66,7 @@ fun CryptoDetailScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "${state.detail?.symbol?.replace("USDT", "")}/USDT",
+                            text = tradingPair.displayName,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
@@ -88,6 +89,7 @@ fun CryptoDetailScreen(
         ) {
             // Stats Header
             state.detail?.let { detail ->
+                val detailPair = splitTradingPair(detail.symbol)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -104,7 +106,7 @@ fun CryptoDetailScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = "~$${String.format(Locale.US, "%.2f", detail.price.toDoubleOrNull() ?: 0.0)}", color = Color.Gray, fontSize = 14.sp)
+                            Text(text = detailPair.displayName, color = Color.Gray, fontSize = 14.sp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${if (detail.isPositive) "+" else ""}${detail.priceChangePercent}%",
@@ -117,8 +119,8 @@ fun CryptoDetailScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         StatRow("24h high", formatDecimal(detail.highPrice))
                         StatRow("24h low", formatDecimal(detail.lowPrice))
-                        StatRow("24h vol (${detail.symbol.replace("USDT", "")})", formatVol(detail.volume))
-                        StatRow("24h turnover (USDT)", formatVol(detail.quoteVolume))
+                        StatRow("24h vol (${detailPair.baseAsset})", formatVol(detail.volume))
+                        StatRow("24h turnover (${detailPair.quoteAsset})", formatVol(detail.quoteVolume))
                     }
                 }
             }
@@ -215,6 +217,42 @@ fun StatRow(label: String, value: String) {
         Text(text = value, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
     }
 }
+
+private data class TradingPairParts(
+    val baseAsset: String,
+    val quoteAsset: String
+) {
+    val displayName: String = if (quoteAsset.isBlank()) baseAsset else "$baseAsset/$quoteAsset"
+}
+
+private fun splitTradingPair(symbol: String): TradingPairParts {
+    if (symbol.isBlank()) return TradingPairParts("", "")
+
+    val quoteAsset = knownQuoteAssets.firstOrNull { symbol.endsWith(it) }.orEmpty()
+    return if (quoteAsset.isNotBlank() && symbol.length > quoteAsset.length) {
+        TradingPairParts(
+            baseAsset = symbol.removeSuffix(quoteAsset),
+            quoteAsset = quoteAsset
+        )
+    } else {
+        TradingPairParts(symbol, "")
+    }
+}
+
+private val knownQuoteAssets = listOf(
+    "USDT",
+    "FDUSD",
+    "USDC",
+    "TUSD",
+    "BUSD",
+    "BTC",
+    "ETH",
+    "BNB",
+    "BRL",
+    "EUR",
+    "TRY",
+    "DAI"
+)
 
 private fun formatDecimal(value: String): String {
     val d = value.toDoubleOrNull() ?: return value

@@ -10,6 +10,14 @@ data class CryptoPair(
     val source: String
 )
 
+data class AvailableCryptoPair(
+    val symbol: String,
+    val baseAsset: String,
+    val quoteAsset: String
+) {
+    val displayName: String = "$baseAsset/$quoteAsset"
+}
+
 data class PairDetail(
     val symbol: String,
     val price: String,

@@ -13,6 +13,7 @@ import com.defitracker.app.data.remote.dto.CoinStatsTransactionDto
 import com.defitracker.app.data.remote.dto.CoinStatsTransactionSyncRequest
 import com.defitracker.app.data.remote.dto.CoinStatsTransactionSyncWalletDto
 import com.defitracker.app.data.remote.dto.EtherscanTransactionDto
+import com.defitracker.app.domain.model.AvailableCryptoPair
 import com.defitracker.app.domain.model.CryptoPair
 import com.defitracker.app.domain.model.PairDetail
 import com.defitracker.app.domain.repository.CryptoRepository
@@ -40,7 +41,7 @@ class CryptoRepositoryImpl @Inject constructor(
         Log.w(TAG, context, throwable)
     }
 
-    private var cachedSymbols: List<Pair<String, String>> = emptyList()
+    private var cachedSymbols: List<AvailableCryptoPair> = emptyList()
     private val klineCache = object : LinkedHashMap<String, CachedKlines>(
         KLINE_CACHE_MAX_ENTRIES,
         0.75f,
@@ -68,8 +69,15 @@ class CryptoRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun addTrackedPair(symbol: String, baseAsset: String, source: String) {
-        trackedPairDao.insertTrackedPair(TrackedPairEntity(symbol, baseAsset, source = source))
+    override suspend fun addTrackedPair(symbol: String, baseAsset: String, quoteAsset: String, source: String) {
+        trackedPairDao.insertTrackedPair(
+            TrackedPairEntity(
+                symbol = symbol,
+                baseAsset = baseAsset,
+                quoteAsset = quoteAsset,
+                source = source
+            )
+        )
     }
 
     override suspend fun removeTrackedPair(symbol: String) {
@@ -110,13 +118,18 @@ class CryptoRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun getAvailableSymbols(): List<Pair<String, String>> {
+    override suspend fun getAvailableSymbols(): List<AvailableCryptoPair> {
         if (cachedSymbols.isNotEmpty()) return cachedSymbols
         return try {
             val info = binanceApi.getExchangeInfo()
             cachedSymbols = info.symbols
-                .filter { it.quoteAsset == "USDT" }
-                .map { Pair(it.symbol, it.baseAsset) }
+                .map {
+                    AvailableCryptoPair(
+                        symbol = it.symbol,
+                        baseAsset = it.baseAsset,
+                        quoteAsset = it.quoteAsset
+                    )
+                }
             cachedSymbols
         } catch (e: CancellationException) {
             throw e
