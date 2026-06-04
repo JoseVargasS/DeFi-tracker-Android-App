@@ -182,24 +182,37 @@ fun CryptoDetailScreen(
 
             // Stacked Charts Area
             Column(modifier = Modifier.fillMaxSize()) {
-                if (state.candles.isNotEmpty()) {
-                    // Shared chart references for sync
-                    val priceChartRef = remember { mutableStateOf<CombinedChart?>(null) }
-                    val volumeChartRef = remember { mutableStateOf<BarChart?>(null) }
-                    val stochChartRef = remember { mutableStateOf<LineChart?>(null) }
+                when {
+                    state.candles.isNotEmpty() -> {
+                        // Shared chart references for sync
+                        val priceChartRef = remember { mutableStateOf<CombinedChart?>(null) }
+                        val volumeChartRef = remember { mutableStateOf<BarChart?>(null) }
+                        val stochChartRef = remember { mutableStateOf<LineChart?>(null) }
 
-                    Box(modifier = Modifier.weight(2.5f)) {
-                        PriceChart(state, priceChartRef, volumeChartRef, stochChartRef)
+                        Box(modifier = Modifier.weight(2.5f)) {
+                            PriceChart(state, priceChartRef, volumeChartRef, stochChartRef)
+                        }
+                        Box(modifier = Modifier.weight(0.8f)) {
+                            VolumeChart(state, priceChartRef, volumeChartRef)
+                        }
+                        Box(modifier = Modifier.weight(1f)) {
+                            StochRSIChart(state, priceChartRef, stochChartRef)
+                        }
                     }
-                    Box(modifier = Modifier.weight(0.8f)) {
-                        VolumeChart(state, priceChartRef, volumeChartRef)
+                    state.isLoading -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Color(0xFF1ECB81))
+                        }
                     }
-                    Box(modifier = Modifier.weight(1f)) {
-                        StochRSIChart(state, priceChartRef, stochChartRef)
+                    state.error.isNotBlank() -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(state.error, color = Color.Gray, fontSize = 13.sp)
+                        }
                     }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Color(0xFF1ECB81))
+                    else -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No chart data available", color = Color.Gray, fontSize = 13.sp)
+                        }
                     }
                 }
             }
