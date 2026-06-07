@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -42,6 +43,9 @@ import com.github.mikephil.charting.listener.OnChartGestureListener
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -311,6 +315,13 @@ private fun List<Pair<Long, Double>>.getValueAtCandleIndex(index: Int): Double? 
     return firstOrNull { it.first.toInt() == index }?.second
 }
 
+private data class PriceRangeSelection(
+    val startIndex: Int,
+    val endIndex: Int? = null
+) {
+    val isComplete: Boolean = endIndex != null
+}
+
 // ─── PRICE CHART ────────────────────────────────────────────────────────────
 @Composable
 fun PriceChart(
@@ -321,7 +332,15 @@ fun PriceChart(
 ) {
     val stateRef = remember { mutableStateOf(state) }
     val lastRenderedDataKey = remember { mutableStateOf<String?>(null) }
+    val rangeToolEnabled = remember { mutableStateOf(false) }
+    val rangeSelection = remember { mutableStateOf<PriceRangeSelection?>(null) }
+    val currentViewportKey = state.viewportKey()
 
+    LaunchedEffect(currentViewportKey) {
+        rangeSelection.value = null
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
@@ -336,6 +355,42 @@ fun PriceChart(
                     color = GraphicsColor.argb(220, 255, 255, 255)
                     strokeWidth = 1.5f
                     pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                }
+                private val profileUpPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(150, 62, 218, 222)
+                    style = Paint.Style.FILL
+                }
+                private val profileDownPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(150, 255, 82, 134)
+                    style = Paint.Style.FILL
+                }
+                private val profilePocPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(190, 255, 193, 7)
+                    style = Paint.Style.FILL
+                }
+                private val profilePocLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(125, 255, 193, 7)
+                    strokeWidth = 1.4f
+                    pathEffect = DashPathEffect(floatArrayOf(8f, 6f), 0f)
+                }
+                private val selectionFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(38, 30, 203, 129)
+                    style = Paint.Style.FILL
+                }
+                private val selectionStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(230, 30, 203, 129)
+                    strokeWidth = 2.2f
+                    style = Paint.Style.STROKE
+                }
+                private val selectionTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.WHITE
+                    textSize = 24f
+                    textAlign = Paint.Align.LEFT
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                }
+                private val selectionLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(220, 26, 29, 35)
+                    style = Paint.Style.FILL
                 }
 
                 private val tagTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -364,8 +419,252 @@ fun PriceChart(
                 private var downX = 0f
                 private var downY = 0f
 
+                private fun touchToCandleIndex(x: Float, y: Float, size: Int): Int? {
+                    val contentLeft = viewPortHandler.contentLeft()
+                    val contentRight = viewPortHandler.contentRight()
+                    val contentTop = viewPortHandler.contentTop()
+                    val contentBottom = viewPortHandler.contentBottom()
+                    if (x < contentLeft || x > contentRight || y < contentTop || y > contentBottom) return null
+                    val values = getTransformer(YAxis.AxisDependency.LEFT).getValuesByTouchPoint(x, y)
+                    return values.x.roundToInt().coerceIn(0, size - 1)
+                }
+
+                private fun applyRangeTap(x: Float, y: Float): Boolean {
+                    val candles = stateRef.value.candles
+                    if (candles.isEmpty()) return false
+                    val index = touchToCandleIndex(x, y, candles.size) ?: return false
+                    val current = rangeSelection.value
+                    rangeSelection.value = if (current == null || current.isComplete) {
+                        PriceRangeSelection(startIndex = index)
+                    } else {
+                        current.copy(endIndex = index)
+                    }
+                    highlightValue(null)
+                    lastTouchYPx = -1f
+                    syncHighlights(this, volumeChartRef.value, stochChartRef.value)
+                    invalidate()
+                    return true
+                }
+
+                private fun drawFixedRangeVolumeProfile(
+                    canvas: Canvas,
+                    candles: List<CandleData>,
+                    visibleStart: Int,
+                    visibleEnd: Int
+                ) {
+                    if (visibleStart >= visibleEnd) return
+                    val contentLeft = viewPortHandler.contentLeft()
+                    val contentRight = viewPortHandler.contentRight()
+                    val contentTop = viewPortHandler.contentTop()
+                    val contentBottom = viewPortHandler.contentBottom()
+                    val contentHeight = contentBottom - contentTop
+                    val contentWidth = contentRight - contentLeft
+                    if (contentHeight <= 0f || contentWidth <= 0f) return
+
+                    var minPrice = Double.POSITIVE_INFINITY
+                    var maxPrice = Double.NEGATIVE_INFINITY
+                    for (index in visibleStart..visibleEnd) {
+                        val candle = candles[index]
+                        minPrice = min(minPrice, candle.low)
+                        maxPrice = max(maxPrice, candle.high)
+                    }
+                    if (!minPrice.isFinite() || !maxPrice.isFinite() || maxPrice <= minPrice) return
+
+                    val binCount = (contentHeight / 8f).roundToInt().coerceIn(34, 64)
+                    val upVolume = DoubleArray(binCount)
+                    val downVolume = DoubleArray(binCount)
+                    val binSize = (maxPrice - minPrice) / binCount
+                    if (binSize <= 0.0) return
+
+                    for (index in visibleStart..visibleEnd) {
+                        val candle = candles[index]
+                        val firstBin = (((candle.low - minPrice) / binSize).toInt()).coerceIn(0, binCount - 1)
+                        val lastBin = (((candle.high - minPrice) / binSize).toInt()).coerceIn(0, binCount - 1)
+                        val touchedBins = (lastBin - firstBin + 1).coerceAtLeast(1)
+                        val volumePerBin = candle.volume / touchedBins
+                        for (bin in firstBin..lastBin) {
+                            if (candle.close >= candle.open) {
+                                upVolume[bin] += volumePerBin
+                            } else {
+                                downVolume[bin] += volumePerBin
+                            }
+                        }
+                    }
+
+                    var maxVolume = 0.0
+                    var pocBin = 0
+                    for (bin in 0 until binCount) {
+                        val total = upVolume[bin] + downVolume[bin]
+                        if (total > maxVolume) {
+                            maxVolume = total
+                            pocBin = bin
+                        }
+                    }
+                    if (maxVolume <= 0.0) return
+
+                    val profileMaxWidth = (contentWidth * 0.34f).coerceIn(82f, 210f)
+                    val barGap = 1f
+                    val trans = getTransformer(YAxis.AxisDependency.LEFT)
+                    val pricePts = FloatArray(2)
+
+                    for (bin in 0 until binCount) {
+                        val total = upVolume[bin] + downVolume[bin]
+                        if (total <= 0.0) continue
+                        val low = minPrice + binSize * bin
+                        val high = low + binSize
+                        pricePts[0] = 0f
+                        pricePts[1] = high.toFloat()
+                        trans.pointValuesToPixel(pricePts)
+                        val top = pricePts[1].coerceIn(contentTop, contentBottom)
+                        pricePts[1] = low.toFloat()
+                        trans.pointValuesToPixel(pricePts)
+                        val bottom = pricePts[1].coerceIn(contentTop, contentBottom)
+                        val barTop = min(top, bottom) + barGap
+                        val barBottom = max(top, bottom) - barGap
+                        if (barBottom <= barTop) continue
+
+                        val totalWidth = (profileMaxWidth * (total / maxVolume)).toFloat()
+                        val downWidth = if (total > 0.0) (totalWidth * (downVolume[bin] / total)).toFloat() else 0f
+                        val upWidth = totalWidth - downWidth
+                        val right = contentRight - 3f
+                        val left = right - totalWidth
+                        val split = left + upWidth
+                        if (bin == pocBin) {
+                            canvas.drawRect(left, barTop, right, barBottom, profilePocPaint)
+                        } else {
+                            if (upWidth > 0f) canvas.drawRect(left, barTop, split, barBottom, profileUpPaint)
+                            if (downWidth > 0f) canvas.drawRect(split, barTop, right, barBottom, profileDownPaint)
+                        }
+                    }
+
+                    val pocPrice = minPrice + binSize * (pocBin + 0.5)
+                    val pocPts = floatArrayOf(0f, pocPrice.toFloat())
+                    trans.pointValuesToPixel(pocPts)
+                    val pocY = pocPts[1].coerceIn(contentTop, contentBottom)
+                    canvas.drawLine(contentLeft, pocY, contentRight, pocY, profilePocLinePaint)
+
+                    val label = "POC ${formatPriceForChart(pocPrice)}"
+                    val paddingX = 8f
+                    val paddingY = 5f
+                    val labelWidth = selectionTextPaint.measureText(label) + paddingX * 2f
+                    val labelHeight = selectionTextPaint.textSize + paddingY * 2f
+                    val labelLeft = (contentRight - labelWidth - 6f).coerceAtLeast(contentLeft + 6f)
+                    val labelTop = (pocY - labelHeight - 4f).coerceIn(contentTop + 4f, contentBottom - labelHeight - 4f)
+                    yTagRect.set(labelLeft, labelTop, labelLeft + labelWidth, labelTop + labelHeight)
+                    canvas.drawRoundRect(yTagRect, 5f, 5f, selectionLabelPaint)
+                    canvas.drawText(label, labelLeft + paddingX, labelTop + labelHeight - paddingY - 4f, selectionTextPaint)
+                }
+
+                private fun drawPriceRangeSelection(canvas: Canvas, candles: List<CandleData>) {
+                    val selection = rangeSelection.value ?: return
+                    if (candles.isEmpty()) return
+                    val startIndex = selection.startIndex.coerceIn(0, candles.size - 1)
+                    val endIndex = selection.endIndex?.coerceIn(0, candles.size - 1)
+                    val trans = getTransformer(YAxis.AxisDependency.LEFT)
+                    val contentLeft = viewPortHandler.contentLeft()
+                    val contentRight = viewPortHandler.contentRight()
+                    val contentTop = viewPortHandler.contentTop()
+                    val contentBottom = viewPortHandler.contentBottom()
+
+                    if (endIndex == null) {
+                        val start = candles[startIndex]
+                        val pts = floatArrayOf(startIndex.toFloat(), start.close.toFloat())
+                        trans.pointValuesToPixel(pts)
+                        val x = pts[0].coerceIn(contentLeft, contentRight)
+                        val y = pts[1].coerceIn(contentTop, contentBottom)
+                        selectionStrokePaint.color = GraphicsColor.argb(230, 30, 203, 129)
+                        canvas.drawLine(x, contentTop, x, contentBottom, selectionStrokePaint)
+                        canvas.drawCircle(x, y, 7f, dotPaint)
+                        canvas.drawCircle(x, y, 7f, dotOutlinePaint)
+                        val label = "Toca fin"
+                        val labelWidth = selectionTextPaint.measureText(label) + 18f
+                        val labelHeight = selectionTextPaint.textSize + 12f
+                        val labelLeft = (x + 8f).coerceIn(contentLeft + 4f, contentRight - labelWidth - 4f)
+                        val labelTop = (y - labelHeight - 8f).coerceIn(contentTop + 4f, contentBottom - labelHeight - 4f)
+                        yTagRect.set(labelLeft, labelTop, labelLeft + labelWidth, labelTop + labelHeight)
+                        canvas.drawRoundRect(yTagRect, 5f, 5f, selectionLabelPaint)
+                        canvas.drawText(label, labelLeft + 9f, labelTop + labelHeight - 8f, selectionTextPaint)
+                        return
+                    }
+
+                    val leftIndex = min(startIndex, endIndex)
+                    val rightIndex = max(startIndex, endIndex)
+                    val leftCandle = candles[leftIndex]
+                    val rightCandle = candles[rightIndex]
+                    val pts = floatArrayOf(
+                        leftIndex.toFloat(),
+                        leftCandle.close.toFloat(),
+                        rightIndex.toFloat(),
+                        rightCandle.close.toFloat()
+                    )
+                    trans.pointValuesToPixel(pts)
+                    val leftX = pts[0].coerceIn(contentLeft, contentRight)
+                    val rightX = pts[2].coerceIn(contentLeft, contentRight)
+                    val firstY = pts[1].coerceIn(contentTop, contentBottom)
+                    val lastY = pts[3].coerceIn(contentTop, contentBottom)
+                    val visualTop = min(firstY, lastY)
+                    val visualBottom = max(firstY, lastY)
+                    val minHeight = context.resources.displayMetrics.density * 18f
+                    val adjustedTop = if (visualBottom - visualTop < minHeight) {
+                        (visualTop - minHeight / 2f).coerceAtLeast(contentTop)
+                    } else {
+                        visualTop
+                    }
+                    val adjustedBottom = if (visualBottom - visualTop < minHeight) {
+                        (adjustedTop + minHeight).coerceAtMost(contentBottom)
+                    } else {
+                        visualBottom
+                    }
+
+                    val change = rightCandle.close - leftCandle.close
+                    val changePct = if (leftCandle.close != 0.0) change / leftCandle.close * 100.0 else 0.0
+                    val isUp = changePct >= 0.0
+                    selectionStrokePaint.color = if (isUp) GraphicsColor.argb(230, 30, 203, 129) else GraphicsColor.argb(230, 246, 70, 93)
+                    selectionFillPaint.color = if (isUp) GraphicsColor.argb(42, 30, 203, 129) else GraphicsColor.argb(42, 246, 70, 93)
+
+                    yTagRect.set(leftX, adjustedTop, rightX, adjustedBottom)
+                    canvas.drawRect(yTagRect, selectionFillPaint)
+                    canvas.drawRect(yTagRect, selectionStrokePaint)
+                    canvas.drawLine(leftX, contentTop, leftX, contentBottom, selectionStrokePaint)
+                    canvas.drawLine(rightX, contentTop, rightX, contentBottom, selectionStrokePaint)
+                    canvas.drawCircle(leftX, firstY, 6f, dotPaint)
+                    canvas.drawCircle(rightX, lastY, 6f, dotPaint)
+
+                    val bars = rightIndex - leftIndex
+                    val label = "${if (changePct >= 0.0) "+" else ""}${String.format(Locale.US, "%.2f", changePct)}%  $bars velas"
+                    val labelWidth = selectionTextPaint.measureText(label) + 18f
+                    val labelHeight = selectionTextPaint.textSize + 12f
+                    val labelLeft = (rightX - labelWidth).coerceIn(contentLeft + 4f, contentRight - labelWidth - 4f)
+                    val labelTop = (adjustedTop - labelHeight - 6f).coerceIn(contentTop + 4f, contentBottom - labelHeight - 4f)
+                    yTagRect.set(labelLeft, labelTop, labelLeft + labelWidth, labelTop + labelHeight)
+                    canvas.drawRoundRect(yTagRect, 5f, 5f, selectionLabelPaint)
+                    canvas.drawText(label, labelLeft + 9f, labelTop + labelHeight - 8f, selectionTextPaint)
+                }
+
                 override fun onTouchEvent(event: android.view.MotionEvent?): Boolean {
                     if (event == null) return false
+
+                    if (rangeToolEnabled.value) {
+                        parent.requestDisallowInterceptTouchEvent(true)
+                        when (event.action) {
+                            android.view.MotionEvent.ACTION_DOWN -> {
+                                downX = event.x
+                                downY = event.y
+                                return true
+                            }
+                            android.view.MotionEvent.ACTION_UP -> {
+                                val dx = abs(event.x - downX)
+                                val dy = abs(event.y - downY)
+                                if (dx < 14f && dy < 14f) {
+                                    performClick()
+                                    applyRangeTap(event.x, event.y)
+                                }
+                                return true
+                            }
+                            android.view.MotionEvent.ACTION_CANCEL -> return true
+                        }
+                        return true
+                    }
                     
                     when (event.action) {
                         android.view.MotionEvent.ACTION_DOWN -> {
@@ -424,13 +723,20 @@ fun PriceChart(
                 }
 
                 override fun onDraw(canvas: Canvas) {
-                    super.onDraw(canvas)
                     val entries = stateRef.value.candles
-                    if (entries.isEmpty()) return
+                    if (entries.isEmpty()) {
+                        super.onDraw(canvas)
+                        return
+                    }
                     
                     val visibleStart = lowestVisibleX.toInt().coerceIn(0, entries.size - 1)
                     val visibleEnd = highestVisibleX.toInt().coerceIn(0, entries.size - 1)
-                    if (visibleStart >= visibleEnd) return
+                    if (visibleStart >= visibleEnd) {
+                        super.onDraw(canvas)
+                        return
+                    }
+                    drawFixedRangeVolumeProfile(canvas, entries, visibleStart, visibleEnd)
+                    super.onDraw(canvas)
                     
                     var maxIndex = visibleStart
                     var minIndex = visibleStart
@@ -480,6 +786,8 @@ fun PriceChart(
                         val textX = if (px + labelWidth + 16f < contentRight) lineEndX + 4f else lineEndX - labelWidth - 4f
                         canvas.drawText(label, textX, py + 10f, labelPaint)
                     }
+
+                    drawPriceRangeSelection(canvas, entries)
 
                     // --- Draw Crosshair Lines Manually (Exact Y, Snapped X) ---
                     val h = highlighted?.getOrNull(0) ?: return
@@ -676,6 +984,35 @@ fun PriceChart(
             }
         }
     )
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 8.dp, end = 8.dp)
+                .background(
+                    color = if (rangeToolEnabled.value) Color(0xCC1ECB81) else Color(0xCC1A1D23),
+                    shape = RoundedCornerShape(6.dp)
+                )
+                .clickable {
+                    rangeToolEnabled.value = !rangeToolEnabled.value
+                    rangeSelection.value = null
+                    priceChartRef.value?.apply {
+                        highlightValue(null)
+                        syncHighlights(this, volumeChartRef.value, stochChartRef.value)
+                        invalidate()
+                    }
+                }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (rangeToolEnabled.value) "Medir ON" else "Medir",
+                color = if (rangeToolEnabled.value) Color.Black else Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
 }
 
 // ─── VOLUME CHART ────────────────────────────────────────────────────────────
