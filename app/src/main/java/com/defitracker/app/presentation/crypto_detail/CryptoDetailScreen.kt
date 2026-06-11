@@ -357,19 +357,28 @@ fun PriceChart(
                     pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
                 }
                 private val profileUpPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = GraphicsColor.argb(150, 62, 218, 222)
+                    color = GraphicsColor.argb(92, 70, 222, 226)
                     style = Paint.Style.FILL
                 }
                 private val profileDownPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = GraphicsColor.argb(150, 255, 82, 134)
+                    color = GraphicsColor.argb(92, 255, 88, 142)
                     style = Paint.Style.FILL
                 }
                 private val profilePocPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = GraphicsColor.argb(190, 255, 193, 7)
+                    color = GraphicsColor.argb(145, 255, 193, 7)
                     style = Paint.Style.FILL
                 }
+                private val profileBackdropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(105, 0, 0, 0)
+                    style = Paint.Style.FILL
+                }
+                private val profileBoundaryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = GraphicsColor.argb(90, 173, 177, 184)
+                    strokeWidth = 1f
+                    style = Paint.Style.STROKE
+                }
                 private val profilePocLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = GraphicsColor.argb(125, 255, 193, 7)
+                    color = GraphicsColor.argb(150, 255, 193, 7)
                     strokeWidth = 1.4f
                     pathEffect = DashPathEffect(floatArrayOf(8f, 6f), 0f)
                 }
@@ -502,10 +511,21 @@ fun PriceChart(
                     }
                     if (maxVolume <= 0.0) return
 
-                    val profileMaxWidth = (contentWidth * 0.34f).coerceIn(82f, 210f)
-                    val barGap = 1f
+                    val profileMaxWidth = (contentWidth * 0.26f).coerceIn(72f, 160f)
+                    val profileRight = contentRight - 8f
+                    val profileLeft = profileRight - profileMaxWidth - 6f
+                    val barGap = 1.4f
                     val trans = getTransformer(YAxis.AxisDependency.LEFT)
                     val pricePts = FloatArray(2)
+
+                    yTagRect.set(
+                        profileLeft.coerceAtLeast(contentLeft),
+                        contentTop,
+                        contentRight,
+                        contentBottom
+                    )
+                    canvas.drawRect(yTagRect, profileBackdropPaint)
+                    canvas.drawLine(yTagRect.left, contentTop, yTagRect.left, contentBottom, profileBoundaryPaint)
 
                     for (bin in 0 until binCount) {
                         val total = upVolume[bin] + downVolume[bin]
@@ -526,7 +546,7 @@ fun PriceChart(
                         val totalWidth = (profileMaxWidth * (total / maxVolume)).toFloat()
                         val downWidth = if (total > 0.0) (totalWidth * (downVolume[bin] / total)).toFloat() else 0f
                         val upWidth = totalWidth - downWidth
-                        val right = contentRight - 3f
+                        val right = profileRight
                         val left = right - totalWidth
                         val split = left + upWidth
                         if (bin == pocBin) {
@@ -1365,14 +1385,14 @@ private fun BarLineChartBase<*>.setupCommonChartParams() {
 // ─── DATASET HELPERS ─────────────────────────────────────────────────────────
 private fun createCandleDataSet(entries: List<CandleEntry>) = CandleDataSet(entries, "Klines").apply {
     shadowColor = "#F4F4F4".toColorInt()
-    shadowWidth = 1f
-    decreasingColor = "#F6465D".toColorInt()
-    increasingColor = "#1ECB81".toColorInt()
+    shadowWidth = 1.35f
+    decreasingColor = "#FF5A6B".toColorInt()
+    increasingColor = "#22D98B".toColorInt()
     decreasingPaintStyle = Paint.Style.FILL
     increasingPaintStyle = Paint.Style.FILL
     setDrawValues(false)
     shadowColorSameAsCandle = true
-    barSpace = 0.1f
+    barSpace = 0.16f
     highLightColor = "#ADB1B8".toColorInt()
     highlightLineWidth = 1f
     setDrawHorizontalHighlightIndicator(false)
